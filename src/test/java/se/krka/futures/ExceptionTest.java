@@ -4,63 +4,63 @@ import com.google.common.collect.ImmutableList;
 import com.spotify.futures.CompletableFuturesExtra;
 import org.junit.Test;
 
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 
-import static org.junit.Assert.assertEquals;
-
 public class ExceptionTest {
 
-  private static final ImmutableList<Class<?>> EXPECTED = ImmutableList.of(
+  private static final ImmutableList<Class<? extends Throwable>> EXPECTED = ImmutableList.of(
           CompletionException.class,
           IllegalArgumentException.class
   );
 
   @Test
   public void testExceptionTypeSupply() {
-    assertException(CompletableFuture.supplyAsync(() -> Util.doThrow(new IllegalArgumentException())));
+    Util.assertException(CompletableFuture.supplyAsync(() -> Util.doThrow(new IllegalArgumentException())), EXPECTED);
   }
 
   @Test
   public void testExceptionTypeSupplyWrapped() {
-    assertException(CompletableFuture.supplyAsync(() -> Util.doThrow(new CompletionException(new IllegalArgumentException()))));
+    Util.assertException(CompletableFuture.supplyAsync(() -> Util.doThrow(new CompletionException(new IllegalArgumentException()))), EXPECTED);
   }
 
   @Test
   public void testExceptionTypeComposedReturn() {
-    assertException(CompletableFuture.completedFuture("value")
-            .thenCompose(s -> CompletableFuturesExtra.exceptionallyCompletedFuture(new IllegalArgumentException())));
+    Util.assertException(CompletableFuture.completedFuture("value")
+            .thenCompose(s -> CompletableFuturesExtra.exceptionallyCompletedFuture(new IllegalArgumentException())), EXPECTED);
   }
 
   @Test
   public void testExceptionTypeComposeWrapped() {
-    assertException(CompletableFuture.completedFuture("value")
-            .thenCompose(s -> CompletableFuturesExtra.exceptionallyCompletedFuture(new CompletionException(new IllegalArgumentException()))));
+    Util.assertException(CompletableFuture.completedFuture("value")
+            .thenCompose(s -> CompletableFuturesExtra.exceptionallyCompletedFuture(new CompletionException(new IllegalArgumentException()))), EXPECTED);
   }
 
   @Test
   public void testExceptionTypeApplyThrow() {
-    assertException(CompletableFuture
+    Util.assertException(CompletableFuture
             .completedFuture("value")
-            .thenApply(s -> Util.doThrow(new IllegalArgumentException())));
+            .thenApply(s -> Util.doThrow(new IllegalArgumentException())), EXPECTED);
   }
 
   @Test
   public void testExceptionTypeComposeThrow() {
-    assertException(CompletableFuture.completedFuture("value")
-            .thenCompose(s -> Util.doThrow(new IllegalArgumentException())));
+    Util.assertException(CompletableFuture.completedFuture("value")
+            .thenCompose(s -> Util.doThrow(new IllegalArgumentException())), EXPECTED);
   }
 
   @Test
   public void testExceptionTypeComposeThrowWrapped() {
-    assertException(CompletableFuture.completedFuture("value")
-            .thenCompose(s -> Util.doThrow(new CompletionException(new IllegalArgumentException()))));
+    Util.assertException(CompletableFuture.completedFuture("value")
+            .thenCompose(s -> Util.doThrow(new CompletionException(new IllegalArgumentException()))), EXPECTED);
   }
 
-  private static void assertException(CompletableFuture<Object> input) {
-    CompletableFuture<?> future = input
-            .exceptionally(throwable -> ImmutableList.of(throwable.getClass(), throwable.getCause().getClass()));
-    assertEquals(EXPECTED, future.join());
+  @Test
+  public void testCancelException() {
+    CompletableFuture<Object> future = new CompletableFuture<>();
+    future.cancel(true);
+    Util.assertException(future, ImmutableList.of(CancellationException.class));
   }
 
 }

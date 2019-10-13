@@ -1,4 +1,4 @@
-# Futures lessons
+# The opinionated guide to Java 8+ Futures
 
 This is intended as quick guide to getting started with futures in Java.
 It includes some theory, some best practices, exercise material and known issues to keep in mind.
@@ -26,17 +26,67 @@ From a producer side, we should instead use the term Promise. You create a _prom
 and some time later when the value is ready, you complete or fulfill the promise. The future associated with the promise
 will thus complete and the consumer can act on it.
 
+You can think of it as the following flow:
+* The producer creates a Promise
+* The produces extracts the Future from the Promise and gives the Future to the consumer.
+* The consumer starts registering callbacks and transformations on the future.
+* At some point later the producer fulfills the Promise and the callbacks will trigger for the consumer. 
+ 
 (There is a good [wikipedia article](https://en.wikipedia.org/wiki/Futures_and_promises) about this
 if you want to read more about it)
 
-# The Java caveats
+## Futures as monads
 
-Unfortunately, the real world in Java doesn't look like what's described above.
+You can think of futures in Java as monads, similar to the ´Optional` class.
+It's a value container that you can apply transformations on to get a different container with a different value.
 
-## Not really write-once
-Java future can be written more than once
+## Futures as immutables
 
-## Not really read-only for consumers
+If you look at futures from the consumer side and focus on the transformation operations, you can see them
+as immutable. The futures themselves don't change, they just contain a value. From the consumer side,
+it doesn't matter if the futures are complete or not, they will eventually apply the transformations.
+
+This also means that you shouldn't mix futures with mutable objects -
+that introduces risks of race condition related bugs!  
+
+# A brief history of futures in Java
+
+Java 1.5 introduced the `Future` interface but it was a very limited - you could call `get()` and `isDone()`
+but there was no way to get notified of state changes. Instead you would need to do polling.
+
+Google Guava introduced the `ListenableFuture` interface which extends `Future` but also adds
+`addListener(Runnable, executor)` - this one method enabled a more asynchronous development model.
+All other useful methods could now be implemented as utility functions on top of the primitives.
+
+The Google Guava class `Futures` included some very useful methods:
+* `addCallback(callback)` - convenience method on top of `addListener`
+* `transform(function)` - return a new future after applying a function to the values
+* `transformAsync(function)` - like transform, but the function should return a future instead.
+  (Similar to Java 8 `thenCompose`)
+
+Then with Java 8 we got `CompletableFuture` which had achieved feature parity with Google Guava futures,
+though with differences in:
+* Fluent API - `CompletableFuture` has a fluent API unlike `ListenableFuture` (but Google later added `FluentFuture` too)
+* Mutability - Google futures separates the producer side from the consumer side, while they are much more tightly coupled
+  in `CompletableFuture`.
+* Number of primitives - Google futures have a small set of primitives (transform, transformAsync, catching) that
+  can be combined while `CompletableFuture` has a large set of methods for combinations of the underlying primitives.
+  thenApply, thenRun and thenAccept could be reduced to a single promitive and likewise for
+  handle, runAfter, runAsync, whenComplete. Almost all methods in `CompletableFuture` also exist in three variants:
+  regular, async with default executor and async with custom executor.   
+
+This guide will focus on Java8+ futures since it is now the defacto standard, but most of the best practices
+also apply to other types of futures.
+
+# The details of Java 8 futures
+
+Unfortunately, the Java 8 futures doesn't really comply with the strict definitions above.
+* They are not immutable and write-once.
+* Producers and consumers are not really distinct - consumers can also set the state.
+
+That said, if you use them responsibly you can still treat them as immutable and write-once.
+ 
+## But kind of read-only view for consumers?
 Java 8+ defines the class `CompletableFuture` which implements `CompletionStage` and this class can be
 seen as a both a Promise and a Future. It has all the methods necessary to fulfill a promise and to inspect
 the state of the future (is it complete yet?)
@@ -52,45 +102,104 @@ a future form.
 You could also have other implementations of `CompletionStage` which makes it possible to hide the mutability,
 but that is rarely used.
 
-## Futures are similar to monads
+## Completing futures
 
-## States
+A future can be completed in two ways, successful and failed.
 
-Futures are in one of two states: incomplete and complete
-They can transition from incomplete to complete but not the other way around.
+For a successful completion, the future will contain a specific value.
 
-We typically operate on futures as if they were immutable but they can be abused to not be.
+For a failed completion, the future will contain a specific `Throwable` instance.
+If the future fails by throwing inside a transform, or set via `completeExceptionally`,
+they will be wrapped in a `CompletionException`.
 
-## Cached computation
+If the future fails due to a cancellation, it will be mapped to a `CancellationException`
 
-## Obtruding values
+# Nomenclature
 
-# Primitives
+Let's call all methods that operates on a future to create a new future _transform_ methods.
+Let's call all methods that can be triggered on future completion for _callback_ methods.
 
-## Async methods
-## Extra functionality
+# Running callbacks and transforms on executors
 
-# CompletableFuture vs CompletionStage
+Most transform methods come in three forms. Let's use `thenApply` as an example.
+It has the three methods `thenApply(function)`, `thenApplyAsync(function)` and `thenApplyAsync(function, executor)`.
 
-# Exceptions
+`thenApply(function)` will either execute the function on the same thread that completed the parent future or execute
+on the same thread that added the callback to the parent future.
+Which one it is depends on if the callback was added before or after the future was completed.
+Note that it is not always trivial to determine which case it is!
 
-# Threads and executors
+`thenApplyAsync(function)` is equivalent to
+`thenApplyAsync(function, defaultExecutor())` which translates to `ForkJoinPool.commonPool()` in most cases.
+(See javadocs for more information)
+ 
+`thenApplyAsync(function, executor)` will schedule the function to be executed on the specified executor.
+
+This means that for a sequence of `future.thenApplyAsync(function, executor).thenApply(otherFunction)`
+you can not know for sure which thread `otherFunction` will be executed on.
+
+## Tips and tricks
+If you want to ensure that work is being done on a specific executor, you must use the `*Async` method.
+If you just want to move work _away_ from the current executor, it's enough to use `*Async` method for the first
+step and then use the regular methods for further calls in the chain.
+
+Note that this only works as long as the `*Async` method is being invoked at all! If you're using `thenApplyAsync`
+but the parent future has completed exceptionally, the step will be skipped, and thus the work won't move to the
+specified executor.
+
+To ensure that it always moves, I recommend using `whenCompleteAsync(() -> {}, executor)` instead. 
+
+# Immutable? Not really
+
+Once a future has been completed, it should not be set again, but you can in fact do it.
+You can use `obtrudeValue` and `obtrudeException` to overwrite the value of a future.
+
+If the future was already complete when it was obtruded, dependent futures will not be affected.
+
+It's unclear in what circumstances these methods are useful. 
+
+# Cancellation
+
+Cancelling a future is the same as completing it exceptionally with a CancellationException.
+The only difference is that the exact future that was cancelled will emit a CancellationException directly,
+while child futures will have that exception wrapped in a CompletionException.
 
 # Testing
 
-## Avoid blocking
+Writing unit tests with futures can be tricky due to the asynchronous nature of futures and the fact that
+tests should run quickly and deterministically.
 
-# Combining futures
+When possible, it's usually a good idea to pass in already completed futures to the tests and then
+when verifying the result, you should use something like `CompletableFuturesExtra.getCompleted(future)`.
+This ensures that the future was in fact complete and will trigger an exception if it was not.
 
-## Avoid allOf + get
+If you instead call something like `future.get()` or `future.join()` you risk
+blocking on an incomplete future - perhaps infinitely!
 
-# Stuff missing from Java 8 API
-## failedFuture
+You also lose the benefit of being able to detect if the future is not immediately complete.
+If you pass in already completed futures to the code under test, the resulting future should also be immediately
+completed.
 
-# News in Java 9
+For more complex scenarios this is of course not always possible. 
 
-## Still missing
-### onTimeout and completeOnTimeout
+# TODO below:
+* Primitives
+
+* Extra functionality
+(See futures-extra and completable-futures)
+
+* Avoid allOf + get
+* Combining futures
+
+* Avoid blocking
+
+* Stuff missing from Java 8 API
+- failedFuture
+
+* News in Java 9
+
+* Still missing
+- onTimeout and completeOnTimeout
 does not let you configure an executor, so you have to manually add something like:
 `.whenCompleteAsync(()->{}, executor)`
 

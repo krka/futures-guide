@@ -9,7 +9,7 @@ import static org.junit.Assert.assertEquals;
 
 public class ObtrudeTest {
   @Test
-  public void testObtrude() {
+  public void testObtrudeAfterCallback() {
     CompletableFuture<String> future = CompletableFuture.completedFuture("first");
     CompletableFuture<String> future2 = future.thenApply(v -> v + " second");
 
@@ -18,6 +18,21 @@ public class ObtrudeTest {
 
     future.obtrudeValue("not-first");
     assertEquals("not-first", CompletableFuturesExtra.getCompleted(future));
-    assertEquals("not-first second", CompletableFuturesExtra.getCompleted(future2));
+    assertEquals("first second", CompletableFuturesExtra.getCompleted(future2));
+  }
+
+  @Test
+  public void testObtrudeBeforeCallback() {
+    CompletableFuture<String> future = new CompletableFuture<>();
+    CompletableFuture<String> future2 = future.thenApply(v -> v + " second");
+
+    future.obtrudeValue("first");
+    assertEquals("first", CompletableFuturesExtra.getCompleted(future));
+    assertEquals("first second", CompletableFuturesExtra.getCompleted(future2));
+
+    future.obtrudeValue("not-first");
+    CompletableFuture<String> future3 = future.thenApply(v -> v + " second");
+
+    assertEquals("not-first second", CompletableFuturesExtra.getCompleted(future3));
   }
 }
