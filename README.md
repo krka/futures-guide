@@ -49,6 +49,8 @@ it doesn't matter if the futures are complete or not, they will eventually apply
 This also means that you shouldn't mix futures with mutable objects -
 that introduces risks of race condition related bugs!  
 
+> **_Experiment:_** [MutableTest](src/test/java/se/krka/futures/MutableTest.java)
+
 # A brief history of futures in Java
 
 Java 1.5 introduced the `Future` interface but it was a very limited - you could call `get()` and `isDone()`
@@ -112,12 +114,9 @@ For a failed completion, the future will contain a specific `Throwable` instance
 If the future fails by throwing inside a transform, or set via `completeExceptionally`,
 they will be wrapped in a `CompletionException`.
 
-If the future fails due to a cancellation, it will be mapped to a `CancellationException`
+If the future fails due to a cancellation, it will be mapped to a `CancellationException` instead.
 
-# Nomenclature
-
-Let's call all methods that operates on a future to create a new future _transform_ methods.
-Let's call all methods that can be triggered on future completion for _callback_ methods.
+> **_Experiment:_** [ExceptionTest](src/test/java/se/krka/futures/ExceptionTest.java)
 
 # Running callbacks and transforms on executors
 
@@ -138,6 +137,8 @@ Note that it is not always trivial to determine which case it is!
 This means that for a sequence of `future.thenApplyAsync(function, executor).thenApply(otherFunction)`
 you can not know for sure which thread `otherFunction` will be executed on.
 
+> **_Experiment:_** [WhereDoesItRunTest](src/test/java/se/krka/futures/WhereDoesItRunTest.java)
+
 ## Tips and tricks
 If you want to ensure that work is being done on a specific executor, you must use the `*Async` method.
 If you just want to move work _away_ from the current executor, it's enough to use `*Async` method for the first
@@ -149,6 +150,8 @@ specified executor.
 
 To ensure that it always moves, I recommend using `whenCompleteAsync(() -> {}, executor)` instead. 
 
+> **_Experiment:_** [MoveExecutorTest](src/test/java/se/krka/futures/MoveExecutorTest.java)
+
 # Immutable? Not really
 
 Once a future has been completed, it should not be set again, but you can in fact do it.
@@ -158,11 +161,45 @@ If the future was already complete when it was obtruded, dependent futures will 
 
 It's unclear in what circumstances these methods are useful. 
 
+> **_Experiment:_** [ObtrudeTest](src/test/java/se/krka/futures/ObtrudeTest.java)
+
 # Cancellation
 
 Cancelling a future is the same as completing it exceptionally with a CancellationException.
 The only difference is that the exact future that was cancelled will emit a CancellationException directly,
 while child futures will have that exception wrapped in a CompletionException.
+
+> **_Experiment:_** [CancelTest](src/test/java/se/krka/futures/CancelTest.java)
+
+# Useful extra libraries
+
+To simplify life working with Java 8 futures, there's a Spotify library called
+[completable-futures)(https://github.com/spotify/completable-futures).
+
+It contains some useful utility methods, described in more detail below
+
+## dereference
+
+Sometimes (through no fault of you own, I'm sure!) you may end up with something like:
+`CompletableFuture<CompletableFuture<T>> future` which may be annoying to work with.
+
+Fortunately, it's not very difficult to convert that to `CompletableFuture<T> future2`.
+All you need to do is apply `thenCompose(value -> value)` (composing with the identify function).
+
+This has been wrapped as `dereference` - naming was chosen to correspond to the equivalent function in Google Guava.
+
+## exceptionallyCompose
+
+`exceptionallyCompose()` was introduced to cover the usecase of handling a failure by doing more asynchronous work.
+While the Java 8 API lets you handle a successful future and compose it (with `thenCompose`) there is no such
+ equivalent for handling exception. This convenience method is very simple to implement.
+
+> **_Implementation:_** [ExceptionallyCompose](src/test/java/se/krka/futures/ExceptionallyCompose.java)
+
+## combine
+
+It also includes some utility functions to combine multiple futures in a safe way, avoiding manual error-prone calls
+to get or join. 
 
 # Testing
 
@@ -170,7 +207,7 @@ Writing unit tests with futures can be tricky due to the asynchronous nature of 
 tests should run quickly and deterministically.
 
 When possible, it's usually a good idea to pass in already completed futures to the tests and then
-when verifying the result, you should use something like `CompletableFuturesExtra.getCompleted(future)`.
+when verifying the result, you should use something like `CompletableFutures.getCompleted(future)`.
 This ensures that the future was in fact complete and will trigger an exception if it was not.
 
 If you instead call something like `future.get()` or `future.join()` you risk
@@ -182,8 +219,49 @@ completed.
 
 For more complex scenarios this is of course not always possible. 
 
+# Building graphs with futures
+
+Due to the fluent style of the future API, it's easy to think of futures as a sequence of transformation,
+but we don't have to limit ourselves to that.
+
+Multiple child futures can depend on the same parent future, and a child future can depend on multiple parent futures.
+This means we should think of it as a Directed Acyclic Graph (a DAG!) instead!
+
+Each future is a node in the graph, and each dependency is a directed edge.
+
+# Combining futures
+
+To create futures that depend on multiple other futures, you have multiple options:
+* nest the dependencies by using `thenCompose` and `thenApply`
+* use `thenCombine` to pairwise combine futures
+* use `CompletableFuture.allOf()` to combine a list of futures.
+* use a library such as CompletableFutures to combine up to 6 futures
+
+> **_Experiment:_** [CombineTest](src/test/java/se/krka/futures/CombineTest.java)
+
+## Problems with using allOf
+
+There are some usability problems with using `allOf`, so I recommend avoiding it.
+
+You get a `CompletableFuture<Void>` back so it is only useful to determine when the dependencies are complete,
+and get a callback when it is ready. Inside the transformation or callback you then have to call join on the input futures.
+
+This works, but has several potentials for bugs:
+* If you make a mistake, you may be joining on a future that is not complete - this will block in the thread!
+* If you make a mistake, you may be joining on a future that will never complete - this will deadlock the thread!
+* The mistake may not be obvious, and not happen on each execution, making it hard to detect and debug. 
+* If your dependencies change, you might forget to remove one of the calls to joins.  
+
+If you still want to use `allOf()`, at least make sure to replace the calls to join (or get) with calls to
+`CompletableFutures.getCompleted()` which is guaranteed to never block. It will instead fail if the future is not completed.
+
+> **_Experiment:_** [AllOfTest](src/test/java/se/krka/futures/AllOfTest.java)
+ 
 # TODO below:
+* Sync vs async exceptions
+* Libraries
 * Primitives
+* How to implement exceptionallyCompose
 
 * Extra functionality
 (See futures-extra and completable-futures)

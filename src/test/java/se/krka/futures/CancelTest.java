@@ -1,8 +1,8 @@
 package se.krka.futures;
 
-import com.google.common.collect.ImmutableList;
 import org.junit.Test;
 
+import java.util.List;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -15,14 +15,14 @@ public class CancelTest {
   public void cancelSimple() {
     CompletableFuture<?> future = new CompletableFuture<>();
     future.cancel(true);
-    Util.assertException(future, ImmutableList.of(CancellationException.class));
+    Util.assertException(future, List.of(CancellationException.class));
   }
 
   @Test
   public void cancelWithException() {
     CompletableFuture<?> future = new CompletableFuture<>();
     future.completeExceptionally(new CancellationException());
-    Util.assertException(future, ImmutableList.of(CancellationException.class));
+    Util.assertException(future, List.of(CancellationException.class));
   }
 
   @Test
@@ -39,8 +39,8 @@ public class CancelTest {
     assertFalse(future2.isCancelled()); // This was NOT explicitly cancelled!
     assertTrue(future2.isCompletedExceptionally());
 
-    Util.assertException(future, ImmutableList.of(CancellationException.class));
-    Util.assertException(future2, ImmutableList.of(CompletionException.class, CancellationException.class));
+    Util.assertException(future, List.of(CancellationException.class));
+    Util.assertException(future2, List.of(CompletionException.class, CancellationException.class));
   }
 
   @Test
@@ -57,7 +57,7 @@ public class CancelTest {
     assertTrue(future2.isCancelled());
     assertTrue(future2.isCompletedExceptionally());
 
-    Util.assertException(future2, ImmutableList.of(CancellationException.class));
+    Util.assertException(future2, List.of(CancellationException.class));
 
   }
 }

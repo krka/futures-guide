@@ -1,9 +1,8 @@
 package se.krka.futures;
 
-import com.google.common.collect.ImmutableList;
-import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import com.spotify.futures.CompletableFutures;
 
-import java.util.concurrent.CancellationException;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -17,29 +16,40 @@ public class Util {
   }
 
   static ExecutorService newExecutor(String name) {
-    return Executors.newSingleThreadExecutor(new ThreadFactoryBuilder().setNameFormat(name).build());
+    return Executors.newSingleThreadExecutor(
+            runnable -> {
+              Thread thread = new Thread(runnable);
+              thread.setDaemon(true);
+              thread.setName(name);
+              return thread;
+            });
   }
 
   static <T> T doThrow(RuntimeException ex) {
     throw ex;
   }
 
-  static void assertException(CompletableFuture<?> input, ImmutableList<Class<? extends Throwable>> expected) {
+  static void assertException(CompletableFuture<?> input, List<Class<? extends Throwable>> expected) {
+    assertEquals(expected, toList(getException(input)));
+  }
+
+  private static Throwable getException(CompletableFuture<?> input) {
     try {
       input.join();
       fail();
+      throw new RuntimeException("unreachable");
     } catch (Exception e) {
-      assertEquals(expected, toList(e));
+      return e;
     }
   }
 
-  static ImmutableList<Class<?>> toList(Throwable throwable) {
+  static List<Class<?>> toList(Throwable throwable) {
     Class<?> clazz = throwable.getClass();
     Throwable cause = throwable.getCause();
     if (cause == null) {
-      return ImmutableList.of(clazz);
+      return List.of(clazz);
     }
     Class<?> causeClass = cause.getClass();
-    return ImmutableList.of(clazz, causeClass);
+    return List.of(clazz, causeClass);
   }
 }

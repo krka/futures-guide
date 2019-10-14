@@ -1,8 +1,8 @@
 package se.krka.futures;
 
-import com.google.common.collect.ImmutableSet;
 import org.junit.Test;
 
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.function.Function;
@@ -17,7 +17,7 @@ public class MoveExecutorTest {
     CompletableFuture<String> future = CompletableFuture
             .supplyAsync(() -> Util.currThread(), first)
             .thenApplyAsync(s -> Util.currThread(), second);
-    assertTrue(ImmutableSet.of("second", "main").contains(future.join()));
+    assertTrue(Set.of("second", "main").contains(future.join()));
   }
 
   @Test
@@ -28,7 +28,7 @@ public class MoveExecutorTest {
             .<String>supplyAsync(() -> Util.doThrow(new RuntimeException(Util.currThread())), first)
             .thenApplyAsync(Function.identity(), second)
             .exceptionally(throwable -> Util.currThread());
-    assertTrue(ImmutableSet.of("first", "main").contains(future.join()));
+    assertTrue(Set.of("first", "main").contains(future.join()));
   }
 
   @Test
@@ -39,6 +39,6 @@ public class MoveExecutorTest {
             .<String>supplyAsync(() -> Util.doThrow(new RuntimeException(Util.currThread())), first)
             .whenCompleteAsync((s, t) -> {}, second)
             .exceptionally(throwable -> Util.currThread());
-    assertTrue(ImmutableSet.of("second", "main").contains(future.join()));
+    assertTrue(Set.of("second", "main").contains(future.join()));
   }
 }
