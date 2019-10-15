@@ -174,11 +174,10 @@ It has a bunch of methods that operate on a future to create a new (and improved
 * `whenComplete(BiConsumer)` - 
 * `whenCompleteAsync(BiConsumer, Executor)` - 
 * `whenCompleteAsync(BiConsumer)` - 
-* `handleAsync(BiFunction)` - 
+* `handle(BiFunction)` - transform either value or exception
 * `handleAsync(BiFunction, Executor)` - 
 * `handleAsync(BiFunction)` - 
-* `exceptionally(Function)` - transform exception -> value 
-* `handle(BiFunction)` - 
+* `exceptionally(Function)` - transform exception
 
 There are a lot of methods here - most of them can be expressed in terms of `handle` and `thenCompose`
 and can be considered convenience methods and to better express intent.
@@ -343,10 +342,15 @@ New instance methods:
 * `orTimeout(long, TimeUnit)` - Complete the future with an exception after a timeout
 
 ## Some notable problems
-- `orTimeout` and ´completeOnTimeout`
+- `orTimeout` and `completeOnTimeout`
 does not let you configure an executor, so you have to manually add something like:
 `.whenCompleteAsync(()->{}, executor)`
 
-Otherwise you may be bottlenecking on a static single-threaded ScheduledExecutorService.
+Otherwise you may be bottlenecking on a static single-threaded `ScheduledExecutorService`.
 
 > **_Experiment:_** [OnTimeoutTest](src/test/java/se/krka/futures/OnTimeoutTest.java)
+
+# TODO:
+workarounds for timeout-issue
+Explain minimalCompletionStage and delayedExecutor
+Rename OnTimeoutTest -> CompleteOnTimeoutTest
