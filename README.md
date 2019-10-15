@@ -343,30 +343,10 @@ New instance methods:
 * `orTimeout(long, TimeUnit)` - Complete the future with an exception after a timeout
 
 ## Some notable problems
-- onTimeout and completeOnTimeout
+- `orTimeout` and ´completeOnTimeout`
 does not let you configure an executor, so you have to manually add something like:
 `.whenCompleteAsync(()->{}, executor)`
 
 Otherwise you may be bottlenecking on a static single-threaded ScheduledExecutorService.
 
-
-
-
-
- 
-# TODO below:
-* Sync vs async exceptions
-* Libraries
-
-* Avoid blocking
-
-* Stuff missing from Java 8 API
-- failedFuture
-
-* News in Java 9
-
-
-
-
-
-* Still missing
+> **_Experiment:_** [OnTimeoutTest](src/test/java/se/krka/futures/OnTimeoutTest.java)
