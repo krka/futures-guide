@@ -353,4 +353,3 @@ Otherwise you may be bottlenecking on a static single-threaded `ScheduledExecuto
 # TODO:
 workarounds for timeout-issue
 Explain minimalCompletionStage and delayedExecutor
-Rename OnTimeoutTest -> CompleteOnTimeoutTest

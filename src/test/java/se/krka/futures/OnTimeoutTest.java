@@ -1,32 +1,36 @@
 package se.krka.futures;
 
+import com.google.common.util.concurrent.MoreExecutors;
 import org.junit.Test;
 
 import java.io.Closeable;
-import java.io.IOException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
 
 public class OnTimeoutTest {
   @Test
   public void testTimeoutNotBlocking() throws Exception {
+    waitForNotBlocking();
     assertTrue(measureTimeout() < 200);
   }
 
   @Test
   public void testTimeoutNotBlockingTwice() throws Exception {
+    waitForNotBlocking();
     assertTrue(measureTimeout() < 200);
     assertTrue(measureTimeout() < 200);
   }
 
   @Test
   public void testTimeoutBlocking() throws Exception {
+    waitForNotBlocking();
     try (Killer killer = new Killer(killTimeout())) {
       expectFailure();
     }
@@ -34,14 +38,23 @@ public class OnTimeoutTest {
 
   @Test
   public void testTimeoutBlocking2() throws Exception {
+    waitForNotBlocking();
     try (Killer killer = new Killer(killTimeout2())) {
+      expectFailure();
+    }
+  }
+
+  @Test
+  public void testTimeoutBlockingWithDelayedExecutor() throws Exception {
+    waitForNotBlocking();
+    try (Killer killer = new Killer(killTimeout3())) {
       expectFailure();
     }
   }
 
   private void expectFailure() throws Exception {
     long time = measureTimeout();
-    assertTrue("time was " + time, time >= 1000);
+    assertTrue("time was " + time, time >= 900);
   }
 
   private long measureTimeout() throws InterruptedException, TimeoutException {
@@ -59,36 +72,63 @@ public class OnTimeoutTest {
   }
 
   private CompletableFuture<String> killTimeout() {
-    return new CompletableFuture<String>()
-            .orTimeout(1, TimeUnit.MILLISECONDS)
-            .handle((s, t) -> {
-              try {
-                sleepOnThread();
-                return "";
-              } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-              }
-            })
-            .exceptionally(Throwable::getMessage);
+    waitForNotBlocking();
+    CompletableFuture<String> future = new CompletableFuture<String>()
+            .orTimeout(10, TimeUnit.MILLISECONDS)
+            .exceptionally(Throwable::getMessage)
+            .thenApply(s -> sleepOnThread(s, 1000));
+    waitForBlocking();
+    return future;
   }
 
   private CompletableFuture<String> killTimeout2() {
-    return new CompletableFuture<String>()
-            .completeOnTimeout("", 1, TimeUnit.MILLISECONDS)
-            .thenApply(s -> {
-              try {
-                sleepOnThread();
-                return s;
-              } catch (InterruptedException e) {
-                return s;
-              }
-            });
+    CompletableFuture<String> future = new CompletableFuture<String>()
+            .completeOnTimeout("", 10, TimeUnit.MILLISECONDS)
+            .thenApply(s -> sleepOnThread(s, 1000));
+    waitForBlocking();
+    return future;
   }
 
-  private void sleepOnThread() throws InterruptedException {
-    int millis = 1000;
-    System.out.println("Sleeping on " + Util.currThread() + " for " + millis + " ms");
-    Thread.sleep(millis);
+  private CompletableFuture<String> killTimeout3() {
+    Executor executor = CompletableFuture.delayedExecutor(1, TimeUnit.MILLISECONDS, MoreExecutors.directExecutor());
+    CompletableFuture<String> future = new CompletableFuture<>();
+    executor.execute(() -> {
+      sleepOnThread(null, 1000);
+      future.complete("value");
+    });
+    waitForBlocking();
+    return future;
+  }
+
+  private static final AtomicBoolean BLOCKING_COMPLETABLE_FUTURE_DELAY_SCHEDULER = new AtomicBoolean(false);
+
+  private <T> T sleepOnThread(T value, int millis) {
+    if (Util.currThread().equals("CompletableFutureDelayScheduler")) {
+      BLOCKING_COMPLETABLE_FUTURE_DELAY_SCHEDULER.set(true);
+    }
+    try {
+      System.out.println("Sleeping on " + Util.currThread() + " for " + millis + " ms");
+      Thread.sleep(millis);
+    } catch (InterruptedException e) {
+      e.printStackTrace();
+    } finally {
+      if (Util.currThread().equals("CompletableFutureDelayScheduler")) {
+        BLOCKING_COMPLETABLE_FUTURE_DELAY_SCHEDULER.set(false);
+      }
+    }
+    return value;
+  }
+
+  private void waitForBlocking() {
+    while (!BLOCKING_COMPLETABLE_FUTURE_DELAY_SCHEDULER.get()) {
+      Thread.yield();
+    }
+  }
+
+  private void waitForNotBlocking() {
+    while (BLOCKING_COMPLETABLE_FUTURE_DELAY_SCHEDULER.get()) {
+      Thread.yield();
+    }
   }
 
   private static class Killer implements Closeable {
