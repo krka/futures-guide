@@ -22,4 +22,37 @@ public class CompleteTest {
     assertEquals("First", getCompleted(future));
     assertEquals("Second", getCompleted(future2));
   }
+
+  @Test
+  public void testCompleteTwice() {
+    CompletableFuture<String> future = new CompletableFuture<>();
+
+    future.complete("First");
+    future.complete("Second");
+
+    assertEquals("First", getCompleted(future));
+  }
+
+  @Test
+  public void testObtrude() {
+    CompletableFuture<String> future = new CompletableFuture<>();
+
+    future.complete("First");
+    future.obtrudeValue("Second");
+
+    assertEquals("Second", getCompleted(future));
+  }
+
+  @Test
+  public void testObtrude2() {
+    CompletableFuture<String> future = new CompletableFuture<>();
+
+    CompletableFuture<String> child = future.thenApply(x -> x + " i am a child");
+
+    future.complete("First");
+    future.obtrudeValue("Second");
+
+    assertEquals("Second", getCompleted(future));
+    assertEquals("First i am a child", getCompleted(child));
+  }
 }

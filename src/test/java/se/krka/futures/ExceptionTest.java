@@ -8,6 +8,8 @@ import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 
+import static org.junit.Assert.assertEquals;
+
 public class ExceptionTest {
 
   private static final List<Class<? extends Throwable>> EXPECTED = List.of(
@@ -59,8 +61,21 @@ public class ExceptionTest {
   @Test
   public void testCancelException() {
     CompletableFuture<Object> future = new CompletableFuture<>();
-    future.cancel(true);
+    assertEquals(0, future.getNumberOfDependents());
+
+    CompletableFuture<Object> f2 = future
+            .thenApply(x -> x)
+            ;
+
+    assertEquals(1, future.getNumberOfDependents());
+
+
+    future.cancel(true);;
+
+    assertEquals(0, future.getNumberOfDependents());
+
     Util.assertException(future, List.of(CancellationException.class));
+
   }
 
 }

@@ -37,7 +37,7 @@ if you want to read more about it)
 
 ## Futures as monads
 
-You can think of futures in Java as monads, similar to the ´Optional` class.
+You can think of futures in Java as monads, similar to the `Optional` class.
 It's a value container that you can apply transformations on to get a different container with a different value.
 
 ## Futures as immutables
@@ -353,3 +353,5 @@ Otherwise you may be bottlenecking on a static single-threaded `ScheduledExecuto
 # TODO:
 workarounds for timeout-issue
 Explain minimalCompletionStage and delayedExecutor
+
+parent / child relationship

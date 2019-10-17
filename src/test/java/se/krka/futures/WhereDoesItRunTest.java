@@ -21,7 +21,7 @@ public class WhereDoesItRunTest {
       runner.submit(
               () -> CompletableFuture
                       .supplyAsync(() -> Util.currThread(), banana)
-                      .thenApplyAsync(s -> s + " -> " + Util.currThread(), apple)
+                      .thenApplyAsync(s -> s + " -> " + Util.currThread())
                       .thenApply(s -> s + " -> " + Util.currThread())
                       .thenAccept(s -> counters.computeIfAbsent(s, key -> new AtomicInteger()).incrementAndGet())
       );
@@ -34,4 +34,14 @@ public class WhereDoesItRunTest {
     counters.forEach((s, count) -> System.out.printf("%10d: %s\n", count.get(), s));
   }
 
+  @Test
+  public void testAasd() {
+    CompletableFuture<Object> future = new CompletableFuture<>();
+    CompletableFuture<Object> future2 = handleCompose(future);
+  }
+
+  private CompletableFuture<Object> handleCompose(CompletableFuture<Object> future) {
+    return future.handle((o, throwable) -> CompletableFuture.completedFuture(o))
+            .thenComposeAsync(x -> x, executor);
+  }
 }

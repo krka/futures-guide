@@ -6,6 +6,9 @@ import java.util.List;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
@@ -27,37 +30,37 @@ public class CancelTest {
 
   @Test
   public void cancelParent() {
-    CompletableFuture<?> future = new CompletableFuture<>();
-    CompletableFuture<?> future2 = future.thenApply(o -> o);
-    future.cancel(false);
+    CompletableFuture<?> parent = new CompletableFuture<>();
+    CompletableFuture<?> child = parent.thenApply(o -> o);
+    parent.cancel(false);
 
-    assertTrue(future.isCancelled());
-    assertTrue(future.isDone());
-    assertTrue(future.isCompletedExceptionally());
+    assertTrue(parent.isCancelled());
+    assertTrue(parent.isDone());
+    assertTrue(parent.isCompletedExceptionally());
 
-    assertTrue(future2.isDone());
-    assertFalse(future2.isCancelled()); // This was NOT explicitly cancelled!
-    assertTrue(future2.isCompletedExceptionally());
+    assertTrue(child.isDone());
+    assertFalse(child.isCancelled()); // This was NOT explicitly cancelled!
+    assertTrue(child.isCompletedExceptionally());
 
-    Util.assertException(future, List.of(CancellationException.class));
-    Util.assertException(future2, List.of(CompletionException.class, CancellationException.class));
+    Util.assertException(parent, List.of(CancellationException.class));
+    Util.assertException(child, List.of(CompletionException.class, CancellationException.class));
   }
 
   @Test
-  public void cancelChild() {
-    CompletableFuture<?> future = new CompletableFuture<>();
-    CompletableFuture<?> future2 = future.thenApply(o -> o);
-    future2.cancel(false);
+  public void cancelChild() throws InterruptedException, ExecutionException, TimeoutException {
+    CompletableFuture<?> parent = new CompletableFuture<>();
+    CompletableFuture<?> child = parent.thenApply(o -> o);
+    child.completeExceptionally(new IllegalArgumentException());
 
-    assertFalse(future.isCancelled());
-    assertFalse(future.isDone());
-    assertFalse(future.isCompletedExceptionally());
+    assertFalse(parent.isCancelled());
+    assertFalse(parent.isDone());
+    assertFalse(parent.isCompletedExceptionally());
 
-    assertTrue(future2.isDone());
-    assertTrue(future2.isCancelled());
-    assertTrue(future2.isCompletedExceptionally());
+    assertTrue(child.isDone());
+    assertFalse(child.isCancelled());
+    assertTrue(child.isCompletedExceptionally());
 
-    Util.assertException(future2, List.of(CancellationException.class));
+    Util.assertException(child, List.of(CompletionException.class, IllegalArgumentException.class));
 
   }
 }
