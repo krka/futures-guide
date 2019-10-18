@@ -5,6 +5,7 @@ import org.junit.Test;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
@@ -37,10 +38,10 @@ public class WhereDoesItRunTest {
   @Test
   public void testAasd() {
     CompletableFuture<Object> future = new CompletableFuture<>();
-    CompletableFuture<Object> future2 = handleCompose(future);
+    //CompletableFuture<Object> future2 = handleCompose(future, executor);
   }
 
-  private CompletableFuture<Object> handleCompose(CompletableFuture<Object> future) {
+  private CompletableFuture<Object> handleCompose(CompletableFuture<Object> future, Executor executor) {
     return future.handle((o, throwable) -> CompletableFuture.completedFuture(o))
             .thenComposeAsync(x -> x, executor);
   }

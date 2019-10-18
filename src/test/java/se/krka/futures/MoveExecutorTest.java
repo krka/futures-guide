@@ -14,10 +14,17 @@ public class MoveExecutorTest {
   public void testMoveExecutor() {
     ExecutorService first = Util.newExecutor("first");
     ExecutorService second = Util.newExecutor("second");
-    CompletableFuture<String> future = CompletableFuture
+    var future = CompletableFuture
             .supplyAsync(() -> Util.currThread(), first)
-            .thenApplyAsync(s -> Util.currThread(), second);
-    assertTrue(Set.of("second", "main").contains(future.join()));
+            .thenApplyAsync(s -> throwString(), first)
+            .whenCompleteAsync((s, t) -> {}, second)
+            .exceptionally(ex -> Util.currThread());
+    String value = future.join();
+    assertTrue(value, Set.of("second").contains(value));
+  }
+
+  private String throwString() {
+    return Util.doThrow(new RuntimeException());
   }
 
   @Test

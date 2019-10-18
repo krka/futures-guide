@@ -39,4 +39,13 @@ public class CombineTest {
             (valueA, valueB, valueC) -> valueA + valueB + valueC);
     assertEquals("ABC", CompletableFutures.getCompleted(result));
   }
+
+  public static void combine(CompletableFuture<String> future1, CompletableFuture<String> f2, CompletableFuture<String> f3) {
+    CompletableFuture<String> result = future1.thenCompose(
+            value -> f2.thenCompose(
+                    value2 -> f3.thenApply(
+                            value3 -> value + value2 + value3)));
+  }
+
+
 }

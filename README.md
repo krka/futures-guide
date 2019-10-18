@@ -241,7 +241,7 @@ while child futures will have that exception wrapped in a CompletionException.
 # Useful extra libraries
 
 To simplify life working with Java 8 futures, there's a Spotify library called
-[completable-futures)(https://github.com/spotify/completable-futures).
+[completable-futures](https://github.com/spotify/completable-futures).
 
 It contains some useful utility methods, described in more detail below
 
@@ -344,7 +344,7 @@ New instance methods:
 ## Some notable problems
 - `orTimeout` and `completeOnTimeout`
 does not let you configure an executor, so you have to manually add something like:
-`.whenCompleteAsync(()->{}, executor)`
+`.whenCompleteAsync((value, throwable) -> {}, executor)`
 
 Otherwise you may be bottlenecking on a static single-threaded `ScheduledExecutorService`.
 
