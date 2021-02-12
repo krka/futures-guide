@@ -241,7 +241,7 @@ while child futures will have that exception wrapped in a CompletionException.
 # Useful extra libraries
 
 To simplify life working with Java 8 futures, there's a Spotify library called
-[completable-futures)(https://github.com/spotify/completable-futures).
+[completable-futures](https://github.com/spotify/completable-futures).
 
 It contains some useful utility methods, described in more detail below
 
