@@ -251,7 +251,7 @@ Sometimes (through no fault of you own, I'm sure!) you may end up with something
 `CompletableFuture<CompletableFuture<T>> future` which may be annoying to work with.
 
 Fortunately, it's not very difficult to convert that to `CompletableFuture<T> future2`.
-All you need to do is apply `thenCompose(value -> value)` (composing with the identify function).
+All you need to do is apply `thenCompose(value -> value)` (composing with the identity function).
 
 This has been wrapped as `dereference` - naming was chosen to correspond to the equivalent function in Google Guava.
 
