@@ -299,7 +299,7 @@ then use on `join()` to access the actual values.
 This is however somewhat error prone and not recommended.
 
 
-To summary, there are multiple alternatives:
+To summarize, there are multiple alternatives:
 * nest the dependencies by using `thenCompose` and `thenApply`
 * use `thenCombine` to pairwise combine futures
 * use `CompletableFuture.allOf()` to combine a list of futures.
