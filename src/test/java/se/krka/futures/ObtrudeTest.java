@@ -10,28 +10,28 @@ import static org.junit.Assert.assertEquals;
 public class ObtrudeTest {
   @Test
   public void testObtrudeAfterCallback() {
-    CompletableFuture<String> future = CompletableFuture.completedFuture("first");
-    CompletableFuture<String> future2 = future.thenApply(v -> v + " second");
+    CompletableFuture<String> parent = CompletableFuture.completedFuture("first");
+    CompletableFuture<String> child = parent.thenApply(v -> v + " second");
 
-    assertEquals("first", CompletableFutures.getCompleted(future));
-    assertEquals("first second", CompletableFutures.getCompleted(future2));
+    assertEquals("first", CompletableFutures.getCompleted(parent));
+    assertEquals("first second", CompletableFutures.getCompleted(child));
 
-    future.obtrudeValue("not-first");
-    assertEquals("not-first", CompletableFutures.getCompleted(future));
-    assertEquals("first second", CompletableFutures.getCompleted(future2));
+    parent.obtrudeValue("not-first");
+    assertEquals("not-first", CompletableFutures.getCompleted(parent));
+    assertEquals("first second", CompletableFutures.getCompleted(child));
   }
 
   @Test
   public void testObtrudeBeforeCallback() {
-    CompletableFuture<String> future = new CompletableFuture<>();
-    CompletableFuture<String> future2 = future.thenApply(v -> v + " second");
+    CompletableFuture<String> parent = new CompletableFuture<>();
+    CompletableFuture<String> child = parent.thenApply(v -> v + " second");
 
-    future.obtrudeValue("first");
-    assertEquals("first", CompletableFutures.getCompleted(future));
-    assertEquals("first second", CompletableFutures.getCompleted(future2));
+    parent.obtrudeValue("first");
+    assertEquals("first", CompletableFutures.getCompleted(parent));
+    assertEquals("first second", CompletableFutures.getCompleted(child));
 
-    future.obtrudeValue("not-first");
-    CompletableFuture<String> future3 = future.thenApply(v -> v + " second");
+    parent.obtrudeValue("not-first");
+    CompletableFuture<String> future3 = parent.thenApply(v -> v + " second");
 
     assertEquals("not-first second", CompletableFutures.getCompleted(future3));
   }

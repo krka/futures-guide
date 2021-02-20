@@ -44,7 +44,8 @@ public class AllOfTest {
       futureA.complete("A");
       futureB.complete("B");
       futureC.complete("C");
-      futureC.complete("D");
+
+      // futureAll is complete now, but callback is deadlocked!
 
       joined.join();
     });
