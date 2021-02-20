@@ -65,6 +65,7 @@ public class OnTimeoutTest {
       timeoutFuture.get(10, TimeUnit.SECONDS);
       throw new AssertionError("Unreachable");
     } catch (ExecutionException e) {
+      assertEquals(TimeoutException.class, Util.exceptionFromCallback(timeoutFuture).getClass());
       assertEquals(TimeoutException.class, e.getCause().getClass());
       long t2 = System.currentTimeMillis();
       return t2 - t1;

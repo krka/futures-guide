@@ -4,187 +4,175 @@ This is intended as quick guide to getting started with futures in Java.
 It includes some theory, some best practices, exercise material and known issues to keep in mind.
 Hopefully all of this can be useful to get a better understanding of how futures work in Java 8+.
 
-# Introduction
+We will refer to instances of `CompletableFuture<T>` as simply future.
+
+# Part 1 - Introduction and basic concepts
 
 Let us start with defining what a future is.
 
+## Futures as value containers
+
 A future is a container for a value, similar to an `AtomicReference<T>`.
 It has two fundamental states - incomplete (a value has not been set yet) and complete (a specific value has been set).
+More specifically, it can be completed in two different ways - normally with a value, and exceptionally with an exception. 
 
-The purpose of a future is to enable asynchronous programming. Instead of blocking a thread, waiting for
-some expensive or time-consuming operation to complete, you can finish immediately and defer the next step
-of the process until the future is complete.
+The following chart shows the possible state transitions. 
+```
+                                                          Completed with value
+  Incomplete future               complete              +----------------------+
++----------------------------+  +---------------------> |                      |
+|                            |    obtrude               | A Value              |
+|  Listeners                 |                          |                      |
+| +---------------------+    |                          +----------------------+
+| |+                     +   |                                |  |
+| | +                     +  |                                |  | obtrude and
+| |  +---------------------+ |                                |  | obtrudeException
+| +  |                     | |                                v  v
+|  + |                     | |                            Completed with exception
+|   +|                     | |                          +--------------------------+
+|    +---------------------+ |   completeExceptionally  |                          |
+|                            |  +---------------------> | An exception             |
++----------------------------+   obtrudeException       |                          |
+                                                        +--------------------------+
+```
+A future can go from incomplete to complete, but never back again.
 
-## Producers and consumers
+Listeners can be seen as a list of tuples of `(Runnable, Executor)`.
+When the future changes state from incomplete to complete, the runnables are invoked on their respective executors, and
+the list of listeners is cleared. At this point, the future will never again have any listeners. 
 
-You can think of futures from two sides - producers and consumers.
+A completed future can still be mutated, using the `obtrude*`-methods, but that's generally not a very common
+practice. If the future was already complete when it was obtruded, dependent futures will not be affected.
 
-We usually spend most of the time using futures as consumers, and then we usually seem them as read-only containers
-that change state once. We can subscribe to be notified when the state changes and trigger further work.
+> **_Experiment:_** [ObtrudeTest](src/test/java/se/krka/futures/ObtrudeTest.java)
 
-From a producer side, we should instead use the term Promise. You create a _promise_ that you will produce a value
-and some time later when the value is ready, you complete or fulfill the promise. The future associated with the promise
-will thus complete and the consumer can act on it.
+## Thread safety
 
-You can think of it as the following flow:
-* The producer creates a Promise
-* The produces extracts the Future from the Promise and gives the Future to the consumer.
-* The consumer starts registering callbacks and transformations on the future.
-* At some point later the producer fulfills the Promise and the callbacks will trigger for the consumer. 
- 
-(There is a good [wikipedia article](https://en.wikipedia.org/wiki/Futures_and_promises) about this
-if you want to read more about it)
+A nice thing about futures is that they are thread safe.
+It's completely safe to do concurrent completions of a future (even though that is not a common pattern).
+Only one of the completions will take effect, and listeners will only be triggered once.
 
-## Futures as monads
+It is also safe to add listeners concurrently, and to add a listener at the same time as the future is completed.
+Listeners are guaranteed to either be invoked exactly once if the future is completed
+(and never invoked if the future is never completed).
 
-You can think of futures in Java as monads, similar to the ´Optional` class.
-It's a value container that you can apply transformations on to get a different container with a different value.
+## Transformations on futures
 
-## Futures as immutables
+It is very common to apply transformations on futures. This is similar to how we can apply
+transformations on `Optional<T>` objects. Applying transformations does not modify the original future
+but instead creates a new future. The transformations are _eager_ which means that transformations will be
+applied as soon as the future completes (or immediately if the future is already complete).
 
-If you look at futures from the consumer side and focus on the transformation operations, you can see them
-as immutable. The futures themselves don't change, they just contain a value. From the consumer side,
-it doesn't matter if the futures are complete or not, they will eventually apply the transformations.
+These transformations are of course implemented by using the internal listeners in the future object.
+Applying a transformation is functionally the same thing as creating an incomplete future and then
+attaching a listener to the original future that will complete the new feature.
 
-This also means that you shouldn't mix futures with mutable objects -
-that introduces risks of race condition related bugs!  
+You can imagine it being implemented something similar to this:
 
-> **_Experiment:_** [MutableTest](src/test/java/se/krka/futures/MutableTest.java)
+```java
+  CompletableFuture<A> inputFuture;
+  CompletableFuture<B> outputFuture = inputFuture.thenApply(function);
+```
 
-# A brief history of futures in Java
+The implementation is then (massively simplified):
+```java
+  CompletableFuture<B> thenApply(Function<A, B> function) {
+    CompletableFuture<B> result = new CompletableFuture<>();
+    if (isDone()) {
+      completeWith(result, function);
+    } else {
+      this.addListener(() -> completeWith(result, function));
+    }
+    return result;
+  }
 
-Java 1.5 introduced the `Future` interface but it was a very limited - you could call `get()` and `isDone()`
-but there was no way to get notified of state changes. Instead you would need to do polling.
+  private void completeWith(CompletableFuture<B> other, Function<A, B> function) {
+    assert this.isDone();
+    try {
+      A inputValue = this.get();
+      B outputValue = function.apply(inputValue);
+      result.complete(outputValue);
+    } catch (Exception e) {
+      result.completeExceptionally(e);
+    }
+  }
+```
 
-Google Guava introduced the `ListenableFuture` interface which extends `Future` but also adds
-`addListener(Runnable, executor)` - this one method enabled a more asynchronous development model.
-All other useful methods could now be implemented as utility functions on top of the primitives.
+Note that this means that the listeners are only needed for incomplete futures,
+since the transformation is computed immediately for completed futures.
 
-The Google Guava class `Futures` included some very useful methods:
-* `addCallback(callback)` - convenience method on top of `addListener`
-* `transform(function)` - return a new future after applying a function to the values
-* `transformAsync(function)` - like transform, but the function should return a future instead.
-  (Similar to Java 8 `thenCompose`)
+This means that a transformation that is set on a completed future will execute the supplied function on the thread
+that *created* the transformation, and a transformation that runs on an incomplete future will execute the
+supplied function on the thread that *completed* the future.
 
-Then with Java 8 we got `CompletableFuture` which had achieved feature parity with Google Guava futures,
-though with differences in:
-* Fluent API - `CompletableFuture` has a fluent API unlike `ListenableFuture` (but Google later added `FluentFuture` too)
-* Mutability - Google futures separates the producer side from the consumer side, while they are much more tightly coupled
-  in `CompletableFuture`.
-* Number of primitives - Google futures have a small set of primitives (transform, transformAsync, catching) that
-  can be combined while `CompletableFuture` has a large set of methods for combinations of the underlying primitives.
-  thenApply, thenRun and thenAccept could be reduced to a single promitive and likewise for
-  handle, runAfter, runAsync, whenComplete. Almost all methods in `CompletableFuture` also exist in three variants:
-  regular, async with default executor and async with custom executor.   
+This can be very important to keep in mind if the functions are expensive to use, or perhaps even blocking, since
+it could lead to starving important thread pools by mistake. 
 
-This guide will focus on Java8+ futures since it is now the defacto standard, but most of the best practices
-also apply to other types of futures.
+## Async futures and executors
 
-# The details of Java 8 futures
+Most of the transformation functions also lets you do things asynchronously, either by passing in an executor
+explicitly (i.e. `thenApplyAsync(function, executor)`) or by implicitly using the default ForkJoinPool
+(i.e. `thenApplyAsync(function)`).
 
-Unfortunately, the Java 8 futures doesn't really comply with the strict definitions above.
-* They are not immutable and write-once.
-* Producers and consumers are not really distinct - consumers can also set the state.
+Note that using the Async variants is the only way to ensure that work is being run on a specific executor,
 
-That said, if you use them responsibly you can still treat them as immutable and write-once.
- 
-## But kind of read-only view for consumers?
-Java 8+ defines the class `CompletableFuture` which implements `CompletionStage` and this class can be
-seen as a both a Promise and a Future. It has all the methods necessary to fulfill a promise and to inspect
-the state of the future (is it complete yet?)
- 
-It also defines the interface `CompletionStage` which is intended as a read-only view of future.
+## Futures and stages
+
+In addition to the concrete class `CompletableFuture<T>` there is an interface called `CompletionStage<T>`.
+You can downcast a `CompletableFuture<T>` to `CompletionStage<T>` and you can
+call `CompletionStage.toCompletableFuture()` to get a future back.
+
+This means that in practice, these are effectively the same thing, and the major difference is a view of which
+operations are available.
+
+`CompletionStage` is intended as a read-only view of future.
 It contains all the methods needed to perform callbacks on a future and it does not have methods that can:
  * set the state (`complete(value)`, `obtrudeValue(value)`, etc.)
  * query the state (`get()`, `join()`, `isDone()`, etc.)
 
-However, it does have the method `toCompletableFuture()` which means that it is in practice trivial to get back as
-a future form.
+## Building graphs with futures
 
-You could also have other implementations of `CompletionStage` which makes it possible to hide the mutability,
-but that is rarely used.
+Due to the fluent style of the future API, it's easy to think of futures as a sequence of transformation,
+but we don't have to limit ourselves to that.
 
-## Completing futures
+Multiple child futures can depend on the same parent future, and a child future can depend on multiple parent futures.
+This means we should think of it as a Directed Acyclic Graph (a DAG!) instead!
 
-A future can be completed in two ways, successful and failed.
+Each future is a node in the graph, and each dependency is a directed edge.
 
-For a successful completion, the future will contain a specific value.
+# Part 2 - Why do we need futures?
 
-For a failed completion, the future will contain a specific `Throwable` instance.
-If the future fails by throwing inside a transform, or set via `completeExceptionally`,
-they will be wrapped in a `CompletionException`.
+The previous section discussed what futures are and how they work, it is important to understand why we need
+futures at all.
 
-If the future fails due to a cancellation, it will be mapped to a `CancellationException` instead.
+## Easier and more well defined asynchronous programming
 
-> **_Experiment:_** [ExceptionTest](src/test/java/se/krka/futures/ExceptionTest.java)
+Futures give us a nice tool to effectively create a computation graph of deferred work without having to manually
+manage any other concurrency primitives such as locks, synchronization, semaphores, etc. This means that you can
+more easily avoid deadlocks, blocking threads and other types of concurrency bugs.
 
-# The Java 8 API
-CompletableFuture has the following static methods:
-* `supplyAsync(Supplier<T>)` and `supplyAsync(Supplier<T>, Executor)` - Create a future from code that runs on a different thread 
-* `runAsync(Runnable, Executor)` and `runAsync(Runnable)` - Similar to supplyAsync, but returns a void future
-* `completedFuture(T)` - Returns a future that's already complete
-* `allOf(CompletableFuture...)` - A future that completes when all futures complete  
-* `anyOf(CompletableFuture...)` - Similar to allOf, but returns as soon as any of the futures complete
+## Easier parallelism
 
-Methods for introspecting the state of a future:
-* `isDone()`, `isCancelled()` and `isCompletedExceptionally()` - Self-explanatory? 
-* `getNumberOfDependents()` - Estimated number of callbacks for future completion (For monitoring only!) 
+With a synchronous code flow, it's not easy to run multiple things in parallel and then wait for the results.
+You would need to submit work to executors and then block until both tasks are complete. This can get messy with more
+complex setups.
 
-Methods for extracting the value of a future:
-* `getNow(T default)` - Non-blocking - returns the default value if it is not complete. 
-* `get()` - Blocking get - throws checked exceptions
-* `get(long, TimeUnit)` - Blocking get, but with a timeout
-* `join()` - Blocking get - throws unchecked exceptions 
+Using futures, we can operate on the futures monadically almost as if we're operating on the values directly.
+While this adds some verbosity, we can at least maintain a (mostly) equivalent flow of logic.
 
-Methods for setting the state of the future
-* `complete(Object)`, `completeExceptionally(Throwable)` and `cancel(boolean)` - Complete the future in various ways 
-* `obtrudeValue(Object)` and `obtrudeException(Throwable)` - Complete the future, mutating the value it even if it is already completed! 
+## Better utilization of hardware
 
-It has a bunch of methods that operate on a future to create a new (and improved!) future:
-* `thenApply(Function)` - transform value -> value
-* `thenApplyAsync(Function, Executor)` - 
-* `thenApplyAsync(Function)` - 
-* `thenAccept(Consumer)` - 
-* `thenAcceptAsync(Consumer, Executor)` - 
-* `thenAcceptAsync(Consumer)` - 
-* `thenRun(Runnable)` - 
-* `thenRunAsync(Runnable, Executor)` - 
-* `thenRunAsync(Runnable)` - 
-* `thenCombine(CompletionStage, BiFunction)` - 
-* `thenCombineAsync(CompletionStage, BiFunction, Executor)` - 
-* `thenCombineAsync(CompletionStage, BiFunction)` - 
-* `thenAcceptBoth(CompletionStage, BiConsumer)` - 
-* `thenAcceptBothAsync(CompletionStage, BiConsumer, Executor)` - 
-* `thenAcceptBothAsync(CompletionStage, BiConsumer)` - 
-* `runAfterBoth(CompletionStage, Runnable)` - 
-* `runAfterBothAsync(CompletionStage, Runnable, Executor)` - 
-* `runAfterBothAsync(CompletionStage, Runnable)` - 
-* `applyToEither(CompletionStage, Function)` - 
-* `applyToEitherAsync(CompletionStage, Function, Executor)` - 
-* `applyToEitherAsync(CompletionStage, Function)` - 
-* `acceptEither(CompletionStage, Consumer)` - 
-* `acceptEitherAsync(CompletionStage, Consumer, Executor)` - 
-* `acceptEitherAsync(CompletionStage, Consumer)` - 
-* `runAfterEither(CompletionStage, Runnable)` - 
-* `runAfterEitherAsync(CompletionStage, Runnable, Executor)` - 
-* `runAfterEitherAsync(CompletionStage, Runnable)` - 
-* `thenCompose(Function)` - transform value -> CompletionStage(value)
-* `thenComposeAsync(Function, Executor)` - 
-* `thenComposeAsync(Function)` - 
-* `whenComplete(BiConsumer)` - 
-* `whenCompleteAsync(BiConsumer, Executor)` - 
-* `whenCompleteAsync(BiConsumer)` - 
-* `handle(BiFunction)` - transform either value or exception
-* `handleAsync(BiFunction, Executor)` - 
-* `handleAsync(BiFunction)` - 
-* `exceptionally(Function)` - transform exception
+Threads are (currently at least) a fairly expensive primitive, both in terms of memory usage and context switching
+overhead.
+If we can change the code from using a large number of threads that each blocks to wait on results,
+to a large number of futures that never block, but instead run on a shared set of thread pools and voluntarily hand off
+work, we can improve the hardware utilization.
 
-There are a lot of methods here - most of them can be expressed in terms of `handle` and `thenCompose`
-and can be considered convenience methods and to better express intent.
+# Part 3 - Important details about Java futures
 
-Some of them can be considered callbacks instead of transforms, but they still return futures so you can
-take actions on the completion, even if you don't care about their values. 
-
+Unfortunately, some things are not very intuitive, so in addition to understanding the basic concepts it is
+also important to know some of the details of how the futures operate.
+ 
 # Running callbacks and transforms on executors
 
 Most transform methods come in three forms. Let's use `thenApply` as an example.
@@ -206,31 +194,31 @@ you can not know for sure which thread `otherFunction` will be executed on.
 
 > **_Experiment:_** [WhereDoesItRunTest](src/test/java/se/krka/futures/WhereDoesItRunTest.java)
 
-## Tips and tricks
-If you want to ensure that work is being done on a specific executor, you must use the `*Async` method.
-If you just want to move work _away_ from the current executor, it's enough to use `*Async` method for the first
-step and then use the regular methods for further calls in the chain.
+## Exception handling
 
-Note that this only works as long as the `*Async` method is being invoked at all! If you're using `thenApplyAsync`
-but the parent future has completed exceptionally, the step will be skipped, and thus the work won't move to the
-specified executor.
+A future can be completed in two ways, with a value and with an exception.
 
-To ensure that it always moves, I recommend using `whenCompleteAsync(() -> {}, executor)` instead. 
+For exceptionally completed futures, the actual exceptions you can observe are not always the same type.
 
-> **_Experiment:_** [MoveExecutorTest](src/test/java/se/krka/futures/MoveExecutorTest.java)
+* If you complete a future with a specific exception and then observe it via `exceptionally()`, `handle()` or `whenComplete()`
+  you will see the same exception.
+* If you observe a future that is transformation of another exceptionally completed future, the exception will be
+  wrapped in a `CompletionException` (unless it already is).
+* If you catch an exception by calling `get()`, a potential `CompletionException` will be unwrapped and wrapped
+  in an `ExecutionException` 
+* If you catch an exception by calling `join()`, the exception will be wrapped in a `CompletionException`
+  (unless it already is).
 
-# Immutable? Not really
+These rules are not perfectly accurate - there are some other edge cases, especially regarding CancellationException.
 
-Once a future has been completed, it should not be set again, but you can in fact do it.
-You can use `obtrudeValue` and `obtrudeException` to overwrite the value of a future.
+Since it is not always known in your code if you are operating on a direct future that can be completed or a transform,
+it's recommended to always unwrap any potential `CompletionException`
+The rules for how exceptions are handled are unfortunately somewhat messy, so some generic advice would be:
+* When you get an exception, use a convenience method to unwrap any `CompletionException` before operating on it.
 
-If the future was already complete when it was obtruded, dependent futures will not be affected.
+> **_Experiment:_** [ExceptionTest](src/test/java/se/krka/futures/ExceptionTest.java)
 
-It's unclear in what circumstances these methods are useful. 
-
-> **_Experiment:_** [ObtrudeTest](src/test/java/se/krka/futures/ObtrudeTest.java)
-
-# Cancellation
+## Cancellation
 
 Cancelling a future is the same as completing it exceptionally with a CancellationException.
 The only difference is that the exact future that was cancelled will emit a CancellationException directly,
@@ -238,37 +226,103 @@ while child futures will have that exception wrapped in a CompletionException.
 
 > **_Experiment:_** [CancelTest](src/test/java/se/krka/futures/CancelTest.java)
 
-# Useful extra libraries
+## Timeouts
 
-To simplify life working with Java 8 futures, there's a Spotify library called
-[completable-futures](https://github.com/spotify/completable-futures).
+Timeouts are very similar to cancellations. The `orTimeout()` method can cause the future to complete exceptionally
+with a `TimeoutException`. Note that `orTimeout()` is not a transformation of a future, it just schedules a job
+to complete it exceptionally after a specific time, if it has not been otherwise completed by that time.
+This is also why it is not part of the `CompletionStage` interface.
 
-It contains some useful utility methods, described in more detail below
+`completeOnTimeout()` is very similar, except it allows you to complete it with a specific value instead of an exception.
 
-## dereference
+# Part 4 - Common patterns and best practices
 
-Sometimes (through no fault of you own, I'm sure!) you may end up with something like:
-`CompletableFuture<CompletableFuture<T>> future` which may be annoying to work with.
+This section describes some common problems and their solutions. Note that some of the patterns are sometimes
+overly verbose and can be replaced with helper functions. Fortunately, you may not have to write those functions
+yourself and one such library is described here: [completable-futures](library.md)
 
-Fortunately, it's not very difficult to convert that to `CompletableFuture<T> future2`.
-All you need to do is apply `thenCompose(value -> value)` (composing with the identity function).
+## Composition of futures
 
-This has been wrapped as `dereference` - naming was chosen to correspond to the equivalent function in Google Guava.
+A common operation is to create a sequence of asynchronous calls.
+As an example, consider a flow where you make a remote http call and then use the result of that call to make a second
+call.
 
-## exceptionallyCompose
+Expressed as a future, you could implement this as:
 
-`exceptionallyCompose()` was introduced to cover the usecase of handling a failure by doing more asynchronous work.
-While the Java 8 API lets you handle a successful future and compose it (with `thenCompose`) there is no such
- equivalent for handling exception. This convenience method is very simple to implement.
+```java
+  remoteCall1().thenCompose(result -> remoteCall2(result)
+``` 
 
-> **_Implementation:_** [ExceptionallyCompose](src/test/java/se/krka/futures/ExceptionallyCompose.java)
+This is similar to `thenApply` except that the function is expected to return a future instead of a value.
 
-## combine
+What if you want to recover from an exception by making a remote call?
+```java
+  remoteCall1().exceptionally(exception -> remoteCall2())
+``` 
+Unfortunately, this won't work, since `exceptionally()` requires a function that returns the same type as its
+parent future. And even if it would work, you would now have a `CompletableFuture<CompletableFuture<T>>` instead
+of a `CompletableFuture<T>`.
 
-It also includes some utility functions to combine multiple futures in a safe way, avoiding manual error-prone calls
-to get or join. 
+There is a common pattern you can use to solve it:
+```java
+  remoteCall1()
+    .thenApply(value -> CompletableFuture.completed(value)) // Wrap in extra layer of futures
+    .exceptionally(exception -> remoteCall2())
+    .thenCompose(future -> future) // Unwrap the extra layer
+``` 
 
-# Testing
+By first transforming the future into a future of futures, we can make the exceptional step work.
+After that we can transform it back to the original type using compose with the identity function.
+
+If you use [completable-futures](library.md) there is a function called `exceptionallyCompose` you can use instead.
+
+## Combining futures
+
+Another common scenario is that you have multiple futures and require all of those values to make progress.
+
+There are multiple ways of achieving that:
+
+```java
+  future1.thenCompose(value1 -> future2.thenApply(value2 -> func(value1, value2)))
+``` 
+Thanks to the scoping rules of lambdas, you can access the first future's value from the inner lambda.
+This can be generalized for more futures, but the code may end up looking very complex.
+
+A cleaner alternative for pairs of futures is using the built in method:
+```java
+  future1.thenCombine(future2, (value1, value2) -> func(value1, value2))
+``` 
+But it only works for pairs.
+
+For more complex cases, you can use `CompletableFuture.allOf(futures)` to combine multiple futures and
+then use on `join()` to access the actual values.
+This is however somewhat error prone and not recommended.
+
+
+To summary, there are multiple alternatives:
+* nest the dependencies by using `thenCompose` and `thenApply`
+* use `thenCombine` to pairwise combine futures
+* use `CompletableFuture.allOf()` to combine a list of futures.
+* use a library such as [completable-futures](library.md) to combine more futures.
+
+> **_Experiment:_** [CombineTest](src/test/java/se/krka/futures/CombineTest.java)
+
+
+If you use [completable-futures](library.md) there is a function called `combine` for more advanced use cases.
+
+## Joining on completed futures
+
+If you do need to join on completed futures, it is best to wrap that call in `isDone()`. This helps avoid
+the risk of accidentally blocking the thread if a bug is introduced:
+```java
+  if (future.isDone()) {
+    return future.join();
+  }
+```
+
+If you use [completable-futures](library.md) there is a function called `getCompleted` you can use instead.
+
+## Testing
 
 Writing unit tests with futures can be tricky due to the asynchronous nature of futures and the fact that
 tests should run quickly and deterministically.
@@ -286,25 +340,40 @@ completed.
 
 For more complex scenarios this is of course not always possible. 
 
-# Building graphs with futures
+## Moving work from executors
 
-Due to the fluent style of the future API, it's easy to think of futures as a sequence of transformation,
-but we don't have to limit ourselves to that.
+If you want to ensure that work is being done on a specific executor, you must use the `*Async` method.
+If you just want to move work _away_ from the current executor, it's enough to use `*Async` method for the first
+step and then use the regular methods for further calls in the chain.
 
-Multiple child futures can depend on the same parent future, and a child future can depend on multiple parent futures.
-This means we should think of it as a Directed Acyclic Graph (a DAG!) instead!
+Note that this only works as long as the `*Async` method is being invoked at all! If you're using `thenApplyAsync`
+but the parent future has completed exceptionally, the step will be skipped, and thus the work won't move to the
+specified executor.
 
-Each future is a node in the graph, and each dependency is a directed edge.
+To ensure that it always moves, I recommend using `future.whenCompleteAsync((v, e) -> {}, executor)` instead. 
 
-# Combining futures
+> **_Experiment:_** [MoveExecutorTest](src/test/java/se/krka/futures/MoveExecutorTest.java)
 
-To create futures that depend on multiple other futures, you have multiple options:
-* nest the dependencies by using `thenCompose` and `thenApply`
-* use `thenCombine` to pairwise combine futures
-* use `CompletableFuture.allOf()` to combine a list of futures.
-* use a library such as CompletableFutures to combine up to 6 futures
+## Avoiding joins.
 
-> **_Experiment:_** [CombineTest](src/test/java/se/krka/futures/CombineTest.java)
+If you are writing some method that returns a CompletionStage or a CompletableFuture, there's never any need to
+call `get()` or `join()` on a future.
+
+Instead prefer to transform and combine futures to get into the desired state.
+
+In some cases you may realize that some futures are guaranteed to be complete, based on the flow of the code,
+but even then calling `get()` or `join()` should be avoided.
+While it is fully possible to do this in a correct way, there is a big risk of introducing bugs in the future by
+writing code in that way.
+
+# Part 5 - Common pitfalls
+
+## Executor for timeouts
+
+`orTimeout` and `completeOnTimeout` does not let you configure an executor, so you should manually move the work
+to a different executor. Otherwise you may be bottlenecking on a static single-threaded `ScheduledExecutorService`.
+
+> **_Experiment:_** [OnTimeoutTest](src/test/java/se/krka/futures/OnTimeoutTest.java)
 
 ## Problems with using allOf
 
@@ -316,40 +385,21 @@ and get a callback when it is ready. Inside the transformation or callback you t
 This works, but has several potentials for bugs:
 * If you make a mistake, you may be joining on a future that is not complete - this will block in the thread!
 * If you make a mistake, you may be joining on a future that will never complete - this will deadlock the thread!
-* The mistake may not be obvious, and not happen on each execution, making it hard to detect and debug. 
-* If your dependencies change, you might forget to remove one of the calls to joins.  
+* The mistake may not be obvious, and not happen on each execution, making it hard to detect and debug.
+* If your dependencies change, you might forget to remove one of the calls to joins.
 
 If you still want to use `allOf()`, at least make sure to replace the calls to join (or get) with calls to
 `CompletableFutures.getCompleted()` which is guaranteed to never block. It will instead fail if the future is not completed.
 
 > **_Experiment:_** [AllOfTest](src/test/java/se/krka/futures/AllOfTest.java)
 
-# News in Java 9
+## Futures and mutable state
 
-With Java 9 we got some additions to the API.
+If you look at futures from the consumer side and focus on the transformation operations, you can see them
+as immutable. The futures themselves don't change, they just contain a value. From the consumer side,
+it doesn't matter if the futures are complete or not, they will eventually apply the transformations.
 
-New static methods:
-* `delayedExecutor(long, TimeUnit)` and `delayedExecutor(long, TimeUnit, Executor)` - Get an executor that delays the work 
-* `completedStage(Object)`, `failedFuture(Throwable)` and `failedStage(Throwable)` - Complements for the `completedFuture(Object)` method 
+This also means that you shouldn't mix futures with mutable objects -
+that introduces risks of race condition related bugs!  
 
-New instance methods:
-* `newIncompleteFuture()` - Virtual constructor, intended for subclassing
-* `defaultExecutor()` - Get the default executor that is used for default `*Async` transforms.
-* `copy()` - Convenience method for `thenApply(x -> x)`
-* `minimalCompletionStage()` - Returns a more restricted future 
-* `completeAsync(Supplier, Executor)` and `completeAsync(Supplier)` - Complete the future using a supplier 
-* `completeOnTimeout(Object, long, TimeUnit)` - Complete the future with a value after a timeout
-* `orTimeout(long, TimeUnit)` - Complete the future with an exception after a timeout
-
-## Some notable problems
-- `orTimeout` and `completeOnTimeout`
-does not let you configure an executor, so you have to manually add something like:
-`.whenCompleteAsync(()->{}, executor)`
-
-Otherwise you may be bottlenecking on a static single-threaded `ScheduledExecutorService`.
-
-> **_Experiment:_** [OnTimeoutTest](src/test/java/se/krka/futures/OnTimeoutTest.java)
-
-# TODO:
-workarounds for timeout-issue
-Explain minimalCompletionStage and delayedExecutor
+> **_Experiment:_** [MutableTest](src/test/java/se/krka/futures/MutableTest.java)

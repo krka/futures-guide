@@ -29,7 +29,7 @@ public final class Promise<T> {
     producerFuture.cancel(false);
   }
 
-  public CompletableFuture<T> getFuture() {
-    return producerFuture.thenApply(Function.identity());
+  public PFuture<T> getFuture() {
+    return new PFuture<>(producerFuture);
   }
 }

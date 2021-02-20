@@ -6,8 +6,10 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 public class Util {
@@ -51,5 +53,12 @@ public class Util {
     }
     Class<?> causeClass = cause.getClass();
     return List.of(clazz, causeClass);
+  }
+
+  static Throwable exceptionFromCallback(CompletableFuture<?> future) {
+    assertTrue(future.isDone());
+    AtomicReference<Throwable> exception = new AtomicReference<>();
+    future.exceptionally(e -> { exception.set(e); return null; });
+    return exception.get();
   }
 }

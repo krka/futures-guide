@@ -35,4 +35,14 @@ public class ObtrudeTest {
 
     assertEquals("not-first second", CompletableFutures.getCompleted(future3));
   }
+
+  @Test
+  public void testObtrude() {
+    CompletableFuture<String> future = new CompletableFuture<>();
+    future.complete("first");
+    future.obtrudeException(new IllegalArgumentException());
+    assertEquals(IllegalArgumentException.class, CompletableFutures.getException(future).getClass());
+    future.obtrudeValue("second");
+    assertEquals("second", CompletableFutures.getCompleted(future));
+  }
 }
