@@ -14,6 +14,7 @@
 </head>
 <body>
 
+
 <div class="lesson">
 <h3>Lesson 1:</h3>
 <p>
@@ -94,6 +95,35 @@ for (var i = 0; i < 10; i++) {
 </div>
 
 
+<div class="lesson">
+<h3>Lesson 4: Retry on exceptions</h3>
+<p>
+Now we are going to simulate a retry on exception. To simplify things, the retry logic is represented by
+the retry future.
+</p>
+<p>Hint: you can use CompletableFuture.completedFuture(value) to create a future that is immediately completed.
+</p>
+<div class="editor">
+CompletableFuture<String> function(CompletableFuture<String> input, CompletableFuture<String> retry) {
+  return null;
+}
+</div>
+<div class="verify">
+for (var i = 0; i < 10; i++) {
+  var input = "input-" + Math.floor(Math.random() * 1000);
+  var retry = "retry-" + Math.floor(Math.random() * 1000);
+  verify(userFunction, Result.value(input), [Result.value(input), Result.value(retry)]);
+}
+for (var i = 0; i < 10; i++) {
+  var input = "exception-" + Math.floor(Math.random() * 1000);
+  var retry = "retry-" + Math.floor(Math.random() * 1000);
+  verify(userFunction, Result.value(retry), [Result.exception(input), Result.value(retry)]);
+}
+</div>
+<pre class="result"></pre>
+</div>
+
+
 
 
 
@@ -148,6 +178,18 @@ for (var i = 0; i < 10; i++) {
       this._result = null;
       this._callbacks = [];
     }
+	
+	static completedFuture(value) {
+	  var newFuture = new CompletableFuture();
+	  newFuture.complete(value);
+	  return newFuture;
+	}
+    
+	static failedFuture(exc) {
+	  var newFuture = new CompletableFuture();
+	  newFuture.completeExceptionally(exc);
+	  return newFuture;
+	}
     
     thenApply(fun) {
 	  return this._handle(result => {
