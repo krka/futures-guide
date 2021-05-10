@@ -115,9 +115,38 @@ for (var i = 0; i < 10; i++) {
 </div>
 </div>
 
+<div class="lesson">
+<h3>Lesson 4: Combining many futures</h3>
+<p>
+Now we are going to get four futures as input. Your job is to return a future that is the concatenation of the values.
+</p>
+<div class="editor">
+CompletableFuture<String> function(
+  CompletableFuture<String> first,
+  CompletableFuture<String> second,
+  CompletableFuture<String> third,
+  CompletableFuture<String> fourth) {
+  // Hint: use a combination of thenCompose and thenApply
+  return null;
+}
+</div>
+<div class="verify">
+for (var i = 0; i < 10; i++) {
+  var input1 = "input-" + Math.floor(Math.random() * 1000);
+  var input2 = "input-" + Math.floor(Math.random() * 1000);
+  var input3 = "input-" + Math.floor(Math.random() * 1000);
+  var input4 = "input-" + Math.floor(Math.random() * 1000);
+  var expectedValue = input1 + input2 + input3 + input4;
+
+  verify(12, userFunction, Result.value(expectedValue), [Result.value(input1), Result.value(input2), Result.value(input3), Result.value(input4)]);
+}
+</div>
+</div>
+
+
 
 <div class="lesson">
-<h3>Lesson 4: Retry on exceptions</h3>
+<h3>Lesson 5: Retry on exceptions</h3>
 <p>
 Now we are going to simulate a retry on exception. To simplify things, the retry logic is represented by
 the retry future.
@@ -143,7 +172,7 @@ for (var i = 0; i < 10; i++) {
 
 
 <div class="lesson">
-<h3>Lesson 5: Retry on exceptions - With limitations</h3>
+<h3>Lesson 6: Retry on exceptions - With limitations</h3>
 <p>
 Same as the previous lesson, but now you are not allowed to use methods defined in Java 12+.
 </p>
@@ -455,8 +484,7 @@ for (var i = 0; i < 10; i++) {
       try {
         var code = editor.getValue();
         code = code.replace("CompletableFuture<String> function", "return function");
-        code = code.replace("\(CompletableFuture<String> ", "(");
-        code = code.replaceAll(", CompletableFuture<String> ", ", ");
+        code = code.replaceAll("CompletableFuture<String> ", "");
         code = code.replaceAll("->", "=>");
 
         var userFunction = eval("(function() { " + code + ";})()");
