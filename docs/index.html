@@ -7,8 +7,18 @@
     width: 80em;
     height: 10em;
   }
+  div.lesson {
+    width: 82em;
+	padding: 1em;
+  }
   div.verify {
     display: none;
+  }
+  div.passed {
+    background-color: #ccffcc;
+  }
+  div.failed {
+    background-color: #ffcccc;
   }
 </style>
 </head>
@@ -25,19 +35,20 @@ This is an interactive tutorial for futures. The code samples are intended to lo
 <p></p>
 <p>Since Java 8:</p>
 <ul>
-<li>var x = new CompletableFuture(); // Create a new future
-<li>var x = CompletableFuture.completedFuture(value); // Create a new future that is already completed
-<li> var newFuture = future.thenApply(value -> ...); // Transform a future - the lambda must return a value!
-<li> var newFuture = future.thenCompose(value -> ...); // Transform a future - the lambda must return a CompletableFuture!
-<li> var newFuture = future.exceptionally(exc -> ...); // Transform a future - the lambda must return a value!
+<li>var x = new CompletableFuture();
+<li>var x = CompletableFuture.completedFuture(value);
+<li> var newFuture = future.thenApply(value -> new_value);
+<li> var newFuture = future.thenCompose(value -> new_future);
+<li> var newFuture = future.exceptionally(exc -> new_value);
+<li> var newFuture = future.handle((value, exc) -> new_value);
 </ul>
 <p>Since Java 9:</p>
 <ul>
-<li>var x = CompletableFuture.failedFuture(exception); // Create a new future that is already completed (exceptionally)
+<li>var x = CompletableFuture.failedFuture(exception);
 </ul>
 <p>Since Java 12:</p>
 <ul>
-<li> var newFuture = future.exceptionallyCompose(exc -> ...); // Transform a future - the lambda must return a CompletableFuture!
+<li> var newFuture = future.exceptionallyCompose(exc -> new_future);
 </ul>
 </p>
 
@@ -304,6 +315,16 @@ for (var i = 0; i < 10; i++) {
 	  });
     }
     
+    handle(fun) {
+	  return this._handle(result => {
+	    if (result.isValue()) {
+		  return Result.value(fun(result._value, null));
+		} else {
+		  return Result.value(fun(null, result._exception));
+		}
+	  });
+    }
+    
 	_handle(fun) {
       var newFuture = new CompletableFuture();
       this._addCallback(result => {
@@ -490,8 +511,12 @@ for (var i = 0; i < 10; i++) {
         var userFunction = eval("(function() { " + code + ";})()");
         lessonVerify(userFunction);
         resultDom.text("Passed!");
+        lesson.addClass("passed");
+        lesson.removeClass("failed");
       } catch (err) {
         resultDom.text(err.toString());
+        lesson.removeClass("passed");
+        lesson.addClass("failed");
       }
 	};
 	
