@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<title>Interactive futures tutorial</title>
+<style type="text/css" media="screen">
+    div.editor { 
+      width: 80em;
+    height: 10em;
+    }
+  div.verify {
+    display: none;
+  }
+</style>
+</head>
+<body>
+
+<div class="lesson">
+<h3>Lesson 1:</h3>
+<p>
+Let's start by transforming a future into a new future.
+Note that we will be simulating a Java runtime, but it is actually running javascript.
+The lessons have been adapted to look like Java, but don't try to do anything too complex:
+</p>
+<p>Challenge: return a future that has the same value as the input future, but adding a "!" at the end.
+</p>
+<div class="editor">
+CompletableFuture<String> function(CompletableFuture<String> input) {
+  // Hint: use the thenApply-method
+  return null;
+}
+</div>
+<div class="verify">
+for (var i = 0; i < 10; i++) {
+  var inputValue = "input-" + Math.floor(Math.random() * 1000);
+  var expectedValue = inputValue + "!"
+  verify(userFunction, Result.value(expectedValue), Result.value(inputValue));
+}
+</div>
+<pre class="result"></pre>
+</div>
+
+<div class="lesson">
+<h3>Lesson 2:</h3>
+<p>
+Now it's time to handle exceptions!
+Your code should do the same thing as before, but if the input future
+has an exception, your result future should convert the error string to "Error: " + exception
+</p>
+<div class="editor">
+CompletableFuture<String> function(CompletableFuture<String> input) {
+  // Hint: use the exceptionally-method
+  return null;
+}
+</div>
+<div class="verify">
+for (var i = 0; i < 10; i++) {
+  var inputValue = "input-" + Math.floor(Math.random() * 1000);
+  var expectedValue = inputValue + "!"
+
+  verify(userFunction, Result.value(expectedValue), Result.value(inputValue));
+}
+for (var i = 0; i < 10; i++) {
+  var inputExc = "exc-" + Math.floor(Math.random() * 1000);
+  var expectedValue = "Error: " + inputExc;
+
+  verify(userFunction, Result.value(expectedValue), Result.exception(inputExc));
+}
+</div>
+<pre class="result"></pre>
+</div>
+
+
+<div class="lesson">
+<h3>Lesson 3: Combining futures</h3>
+<p>
+Now we are going to get two futures as input. Your job is to return a future that is the concatenation of the values.
+</p>
+<div class="editor">
+CompletableFuture<String> function(CompletableFuture<String> first, CompletableFuture<String> second) {
+  // Hint: use the thenCombine-method
+  return null;
+}
+</div>
+<div class="verify">
+for (var i = 0; i < 10; i++) {
+  var input1 = "input-" + Math.floor(Math.random() * 1000);
+  var input2 = "input-" + Math.floor(Math.random() * 1000);
+  var expectedValue = input1 + input2;
+
+  verify(userFunction, Result.value(expectedValue), [Result.value(input1), Result.value(input2)]);
+}
+</div>
+<pre class="result"></pre>
+</div>
+
+
+
+
+
+
+<button id="submit" onclick="submit()">Submit</button>
+    
+<script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jquery/1.4.0/jquery.min.js"></script>
+
+<!-- https://cdnjs.com/libraries/ace -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.12/ace.min.js" type="text/javascript" charset="utf-8"></script>
+<script>
+  var basePath = "https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.12/";
+  ace.config.set("basePath", basePath);
+  ace.config.set("themePath", basePath);
+
+  class Result {
+    constructor(value, exception) {
+      this._value = value;
+      this._exception = exception;
+    }
+	
+	static exception(exc) {
+	  return new Result(null, exc);
+	}
+	
+	static value(value) {
+	  return new Result(value, null);
+	}
+	
+	isException() {
+	  return this._exception != null;
+	}
+
+	isValue() {
+	  return this._exception == null;
+	}
+	
+	equals(other) {
+	  return this._exception == other._exception && this._value == other._value;
+	}
+	
+	toString() {
+	  if (this._exception != null) {
+	    return "Exception(" + this._exception + ")";
+	  }
+      return "Value(" + this._value + ")";
+	}
+  }
+  
+  class CompletableFuture {
+    constructor() {
+      this._result = null;
+      this._callbacks = [];
+    }
+    
+    thenApply(fun) {
+	  return this._handle(result => {
+	    if (result.isValue()) {
+		  return Result.value(fun(result._value));
+		} else {
+		  return result;
+		}
+	  });
+    }
+    
+	_handle(fun) {
+      var newFuture = new CompletableFuture();
+      this._addCallback(result => {
+	    try {
+		  newFuture._internalComplete(fun(result));
+		} catch (err) {
+          newFuture._internalComplete(Result.exception(err));
+		}
+      });
+      return newFuture;
+	}
+	
+	_handleCompose(fun) {
+      var newFuture = new CompletableFuture();
+      this._addCallback(result => {
+	    try {
+		  newFuture._internalComplete(fun(result));
+		} catch (err) {
+          newFuture._internalComplete(Result.exception(err));
+		}
+      });
+      return newFuture;
+	}
+	
+    exceptionally(fun) {
+	  return this._handle(result => {
+	    if (result.isException()) {
+		  return Result.value(fun(result._exception));
+		} else {
+		  return result;
+		}
+	  });
+    }
+	
+	thenCompose(fun) {
+      var newFuture = new CompletableFuture();
+	  this.thenApply(value => {
+	    try {
+	      fun(value)._handle(result => newFuture._internalComplete(result));
+        } catch (err) {
+          newFuture._internalComplete(Result.exception(err));
+		}
+	  });
+	  return newFuture;
+	}
+	
+	thenCombine(other, fun) {
+	  return this.thenCompose(x => other.thenApply(y => fun(x, y)));
+	}
+    
+    _addCallback(fun) {
+      if (this.isComplete()) {
+        fun(this._result);
+      } else {
+        this._callbacks.push(fun);
+      }
+    }
+    
+    
+    isComplete() {
+      return this._result != null;
+    }
+    
+	getResult() {
+      if (!this.isComplete()) {
+        throw "Future is not completed";
+      }
+	  return this._result;
+	}
+	
+    getValue() {
+	  var res = getResult();
+      if (res.isException()) {
+        throw "Future completed exceptionally";
+      }
+      return res._value;
+    }
+    
+    complete(value) {
+      this._internalComplete(Result.value(value));
+    }
+    
+    completeExceptionally(exc) {
+      this._internalComplete(Result.exception(exc));
+    }
+    
+    _internalComplete(result) {
+      if (this.isComplete()) {
+        return;
+      }
+      this._result = result;
+      for (var callback of this._callbacks) {
+        callback(result);
+      }
+      this._callbacks = null;
+    }
+    
+  }
+  
+  function verify(fun, expected, inputs) {
+    if (!Array.isArray(inputs)) {
+	  inputs = [inputs];
+	}
+	
+	var inputFutures = [];
+	for (input of inputs) {
+	  inputFutures.push(new CompletableFuture());
+	}
+	
+	var outputFuture = fun(...inputFutures);
+	// TODO: test various combinations of pre-completed inputs
+	
+	for (inputFuture of inputFutures) {
+      if (inputFuture.isComplete()) {
+        throw "Unexpected modification of the input future";
+      }
+	}
+
+    if (outputFuture == null) {
+      throw "Output is null";
+    }
+    
+    if (!(outputFuture instanceof CompletableFuture)) {
+      throw "Return value has wrong type - expected CompletableFuture";
+    }
+    
+    if (outputFuture.isComplete()) {
+      throw "Future completed before the input";
+    }
+	
+	for (var i = 0; i < inputs.length; i++) {
+	  inputFutures[i]._internalComplete(inputs[i]);
+	}
+	
+    if (!outputFuture.isComplete()) {
+      throw "Future did not depend on the input";
+    }
+    
+	var outputResult = outputFuture.getResult();
+    if (!(outputResult.equals(expected))) {
+      throw "Inputs:   '" + inputs + "'\n" +
+	        "Expected: '" + expected + "'\n" +
+			"Actual:   '" + outputResult + "'";
+    }
+  }
+
+  
+  function submit() {
+    if (!editor) {
+	  return;
+	}
+    resultDom.innerHTML = "Running...";
+    
+    try {
+      var code = editor.getValue();
+      code = code.replace("CompletableFuture<String> function", "return function");
+      code = code.replace("\(CompletableFuture<String> ", "(");
+      code = code.replaceAll(", CompletableFuture<String> ", ", ");
+      code = code.replaceAll("->", "=>");
+
+      userFunction = eval("(function() { " + code + ";})()");
+      lessonVerify();
+      resultDom.innerHTML = "Success!";
+      nextLesson();
+    } catch (err) {
+      resultDom.innerHTML = err;
+    }
+  }
+  
+  var editor;
+  var userFunction;
+  var lessonVerify;
+  var resultDom;
+  
+  function nextLesson() {
+	resultDom = null;
+    editor = null;
+	userFunction = null;
+	lessonVerify = null;
+	
+    var lessondiv = $(".lesson").first();
+    if (lessondiv.length == 0) {
+	  $("#submit").attr('disabled', true);
+      return;
+    }
+
+    resultDom = lessondiv.find(".result").get(0);
+    resultDom.textContent = "";
+
+    var editordiv = lessondiv.find(".editor").get(0);
+	var s = editordiv.innerHTML;
+    editordiv.textContent = s.replaceAll("<string>", "<String>").replaceAll("</string>", "");
+    editor = ace.edit(editordiv);
+    editor.setTheme("ace/theme/monokai");
+    editor.session.setMode("ace/mode/java");
+
+    lessondiv.removeClass("lesson");
+    lessondiv.show();
+    
+    var verifyCode = lessondiv.find(".verify").get(0).textContent;
+    verifyCode = verifyCode.replaceAll("&lt;", "<");
+    lessonVerify = eval("(function() { return function() { " + verifyCode + "};})()");
+  }
+
+  $(".lesson").hide();
+
+  nextLesson();
+
+</script>
+</body>
+</html>
