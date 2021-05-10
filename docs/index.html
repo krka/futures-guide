@@ -3,10 +3,10 @@
 <head>
 <title>Interactive futures tutorial</title>
 <style type="text/css" media="screen">
-    div.editor { 
-      width: 80em;
+  div.editor { 
+    width: 80em;
     height: 10em;
-    }
+  }
   div.verify {
     display: none;
   }
@@ -14,13 +14,37 @@
 </head>
 <body>
 
+<h2>Intro</h2>
+<p>
+This is an interactive tutorial for futures. The code samples are intended to look and behave like Java but it's actually JavaScript.
+"->" is automatically converted to "=>" so you can write lambdas like in Java.</p>
+
+<p>Exceptions are similar to Java, but without anything fancy.</p>
+
+<p>The <a href="https://docs.oracle.com/en/java/javase/12/docs/api/java.base/java/util/concurrent/CompletableFuture.html">CompletableFuture API</a> you can use here is a partial re-implementation in JavaScript. The functions you can use are listed below:
+<p></p>
+<p>Since Java 8:</p>
+<ul>
+<li>var x = new CompletableFuture(); // Create a new future
+<li>var x = CompletableFuture.completedFuture(value); // Create a new future that is already completed
+<li> var newFuture = future.thenApply(value -> ...); // Transform a future - the lambda must return a value!
+<li> var newFuture = future.thenCompose(value -> ...); // Transform a future - the lambda must return a CompletableFuture!
+<li> var newFuture = future.exceptionally(exc -> ...); // Transform a future - the lambda must return a value!
+</ul>
+<p>Since Java 9:</p>
+<ul>
+<li>var x = CompletableFuture.failedFuture(exception); // Create a new future that is already completed (exceptionally)
+</ul>
+<p>Since Java 12:</p>
+<ul>
+<li> var newFuture = future.exceptionallyCompose(exc -> ...); // Transform a future - the lambda must return a CompletableFuture!
+</ul>
+</p>
 
 <div class="lesson">
 <h3>Lesson 1:</h3>
 <p>
 Let's start by transforming a future into a new future.
-Note that we will be simulating a Java runtime, but it is actually running javascript.
-The lessons have been adapted to look like Java, but don't try to do anything too complex:
 </p>
 <p>Challenge: return a future that has the same value as the input future, but adding a "!" at the end.
 </p>
@@ -34,10 +58,9 @@ CompletableFuture<String> function(CompletableFuture<String> input) {
 for (var i = 0; i < 10; i++) {
   var inputValue = "input-" + Math.floor(Math.random() * 1000);
   var expectedValue = inputValue + "!"
-  verify(userFunction, Result.value(expectedValue), Result.value(inputValue));
+  verify(12, userFunction, Result.value(expectedValue), Result.value(inputValue));
 }
 </div>
-<pre class="result"></pre>
 </div>
 
 <div class="lesson">
@@ -58,16 +81,15 @@ for (var i = 0; i < 10; i++) {
   var inputValue = "input-" + Math.floor(Math.random() * 1000);
   var expectedValue = inputValue + "!"
 
-  verify(userFunction, Result.value(expectedValue), Result.value(inputValue));
+  verify(12, userFunction, Result.value(expectedValue), Result.value(inputValue));
 }
 for (var i = 0; i < 10; i++) {
   var inputExc = "exc-" + Math.floor(Math.random() * 1000);
   var expectedValue = "Error: " + inputExc;
 
-  verify(userFunction, Result.value(expectedValue), Result.exception(inputExc));
+  verify(12, userFunction, Result.value(expectedValue), Result.exception(inputExc));
 }
 </div>
-<pre class="result"></pre>
 </div>
 
 
@@ -88,10 +110,9 @@ for (var i = 0; i < 10; i++) {
   var input2 = "input-" + Math.floor(Math.random() * 1000);
   var expectedValue = input1 + input2;
 
-  verify(userFunction, Result.value(expectedValue), [Result.value(input1), Result.value(input2)]);
+  verify(12, userFunction, Result.value(expectedValue), [Result.value(input1), Result.value(input2)]);
 }
 </div>
-<pre class="result"></pre>
 </div>
 
 
@@ -100,8 +121,6 @@ for (var i = 0; i < 10; i++) {
 <p>
 Now we are going to simulate a retry on exception. To simplify things, the retry logic is represented by
 the retry future.
-</p>
-<p>Hint: you can use CompletableFuture.completedFuture(value) to create a future that is immediately completed.
 </p>
 <div class="editor">
 CompletableFuture<String> function(CompletableFuture<String> input, CompletableFuture<String> retry) {
@@ -112,23 +131,44 @@ CompletableFuture<String> function(CompletableFuture<String> input, CompletableF
 for (var i = 0; i < 10; i++) {
   var input = "input-" + Math.floor(Math.random() * 1000);
   var retry = "retry-" + Math.floor(Math.random() * 1000);
-  verify(userFunction, Result.value(input), [Result.value(input), Result.value(retry)]);
+  verify(12, userFunction, Result.value(input), [Result.value(input), Result.value(retry)]);
 }
 for (var i = 0; i < 10; i++) {
   var input = "exception-" + Math.floor(Math.random() * 1000);
   var retry = "retry-" + Math.floor(Math.random() * 1000);
-  verify(userFunction, Result.value(retry), [Result.exception(input), Result.value(retry)]);
+  verify(12, userFunction, Result.value(retry), [Result.exception(input), Result.value(retry)]);
 }
 </div>
-<pre class="result"></pre>
 </div>
 
 
+<div class="lesson">
+<h3>Lesson 5: Retry on exceptions - With limitations</h3>
+<p>
+Same as the previous lesson, but now you are not allowed to use methods defined in Java 12+.
+</p>
+<p>Hint: you can use CompletableFuture.completedFuture(value) to create a future that is immediately completed,
+and CompletableFuture.thenCompose to reduce a future of a future to a future.
+</p>
+<div class="editor">
+CompletableFuture<String> function(CompletableFuture<String> input, CompletableFuture<String> retry) {
+  return null;
+}
+</div>
+<div class="verify">
+for (var i = 0; i < 10; i++) {
+  var input = "input-" + Math.floor(Math.random() * 1000);
+  var retry = "retry-" + Math.floor(Math.random() * 1000);
+  verify(11, userFunction, Result.value(input), [Result.value(input), Result.value(retry)]);
+}
+for (var i = 0; i < 10; i++) {
+  var input = "exception-" + Math.floor(Math.random() * 1000);
+  var retry = "retry-" + Math.floor(Math.random() * 1000);
+  verify(11, userFunction, Result.value(retry), [Result.exception(input), Result.value(retry)]);
+}
+</div>
+</div>
 
-
-
-
-<button id="submit" onclick="submit()">Submit</button>
     
 <script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.4.0/jquery.min.js"></script>
 
@@ -139,6 +179,38 @@ for (var i = 0; i < 10; i++) {
   ace.config.set("basePath", basePath);
   ace.config.set("themePath", basePath);
 
+  class Exception {
+    constructor(message) {
+	  this._message = message;
+	}
+	
+	static wrap(exc) {
+	  if (exc instanceof Exception) {
+	    return exc;
+      } else {
+	    return new Exception(exc);
+	  }
+	}
+	
+    getMessage() {
+	  return this.toString();
+	}
+	
+	toString() {
+	  return this._message;
+	}
+  }
+  
+  function _assert(expr, msg) {
+    if (!expr) {
+	  throw new Exception("Assertion failed: " + msg);
+	}
+  }
+  
+  function _assert_exc(exc) {
+    _assert(exc instanceof Exception, "Expected an exception but found " + exc);
+  }
+  
   class Result {
     constructor(value, exception) {
       this._value = value;
@@ -146,7 +218,7 @@ for (var i = 0; i < 10; i++) {
     }
 	
 	static exception(exc) {
-	  return new Result(null, exc);
+	  return new Result(null, Exception.wrap(exc));
 	}
 	
 	static value(value) {
@@ -167,7 +239,7 @@ for (var i = 0; i < 10; i++) {
 	
 	toString() {
 	  if (this._exception != null) {
-	    return "Exception(" + this._exception + ")";
+	    return "Exception(" + this._exception.getMessage() + ")";
 	  }
       return "Value(" + this._value + ")";
 	}
@@ -186,6 +258,8 @@ for (var i = 0; i < 10; i++) {
 	}
     
 	static failedFuture(exc) {
+	  _assert(_globalLanguageLevel >= 9, "Requires Java 9+");
+	  _assert_exc(exc);
 	  var newFuture = new CompletableFuture();
 	  newFuture.completeExceptionally(exc);
 	  return newFuture;
@@ -235,11 +309,21 @@ for (var i = 0; i < 10; i++) {
 	  });
     }
 	
+    exceptionallyCompose(fun) {
+	  _assert(_globalLanguageLevel >= 12, "Requires Java 12+");
+	  return this
+	    .thenApply(x => CompletableFuture.completedFuture(x))
+	    .exceptionally(fun)
+		.thenCompose(x => x);
+    }
+	
 	thenCompose(fun) {
       var newFuture = new CompletableFuture();
 	  this.thenApply(value => {
 	    try {
-	      fun(value)._handle(result => newFuture._internalComplete(result));
+		  var innerFuture = fun(value);
+		  _assert(innerFuture instanceof CompletableFuture, "Must return a CompletableFuture");
+	      innerFuture._handle(result => newFuture._internalComplete(result));
         } catch (err) {
           newFuture._internalComplete(Result.exception(err));
 		}
@@ -284,6 +368,7 @@ for (var i = 0; i < 10; i++) {
     }
     
     completeExceptionally(exc) {
+	  _assert_exc(exc);
       this._internalComplete(Result.exception(exc));
     }
     
@@ -300,7 +385,8 @@ for (var i = 0; i < 10; i++) {
     
   }
   
-  function verify(fun, expected, inputs) {
+  function verify(languageLevel, fun, expected, inputs) {
+    _globalLanguageLevel = languageLevel
     if (!Array.isArray(inputs)) {
 	  inputs = [inputs];
 	}
@@ -347,68 +433,48 @@ for (var i = 0; i < 10; i++) {
     }
   }
 
-  
-  function submit() {
-    if (!editor) {
-	  return;
-	}
-    resultDom.innerHTML = "Running...";
-    
-    try {
-      var code = editor.getValue();
-      code = code.replace("CompletableFuture<String> function", "return function");
-      code = code.replace("\(CompletableFuture<String> ", "(");
-      code = code.replaceAll(", CompletableFuture<String> ", ", ");
-      code = code.replaceAll("->", "=>");
+  $(".lesson").each((index, element) => {
+    var lesson = $(element);
 
-      userFunction = eval("(function() { " + code + ";})()");
-      lessonVerify();
-      resultDom.innerHTML = "Success!";
-      nextLesson();
-    } catch (err) {
-      resultDom.innerHTML = err;
-    }
-  }
-  
-  var editor;
-  var userFunction;
-  var lessonVerify;
-  var resultDom;
-  
-  function nextLesson() {
-	resultDom = null;
-    editor = null;
-	userFunction = null;
-	lessonVerify = null;
-	
-    var lessondiv = $(".lesson").first();
-    if (lessondiv.length == 0) {
-	  $("#submit").attr('disabled', true);
-      return;
-    }
+    var verifyCode = lesson.find(".verify").get(0).textContent;
+    verifyCode = verifyCode.replaceAll("&lt;", "<");
+    var lessonVerify = eval("(function() { return function(userFunction) { " + verifyCode + "};})()");
 
-    resultDom = lessondiv.find(".result").get(0);
-    resultDom.textContent = "";
+	var resultDom = $('<pre/>');
 
-    var editordiv = lessondiv.find(".editor").get(0);
+    var editordiv = lesson.find(".editor").get(0);
 	var s = editordiv.innerHTML;
     editordiv.textContent = s.replaceAll("<string>", "<String>").replaceAll("</string>", "");
-    editor = ace.edit(editordiv);
+    var editor = ace.edit(editordiv);
     editor.setTheme("ace/theme/monokai");
     editor.session.setMode("ace/mode/java");
 
-    lessondiv.removeClass("lesson");
-    lessondiv.show();
+    var run = function() {
+      resultDom.text("Running...");
     
-    var verifyCode = lessondiv.find(".verify").get(0).textContent;
-    verifyCode = verifyCode.replaceAll("&lt;", "<");
-    lessonVerify = eval("(function() { return function() { " + verifyCode + "};})()");
-  }
+      try {
+        var code = editor.getValue();
+        code = code.replace("CompletableFuture<String> function", "return function");
+        code = code.replace("\(CompletableFuture<String> ", "(");
+        code = code.replaceAll(", CompletableFuture<String> ", ", ");
+        code = code.replaceAll("->", "=>");
 
-  $(".lesson").hide();
-
-  nextLesson();
-
+        var userFunction = eval("(function() { " + code + ";})()");
+        lessonVerify(userFunction);
+        resultDom.text("Passed!");
+      } catch (err) {
+        resultDom.text(err.toString());
+      }
+	};
+	
+	lesson.append(
+	  $('<button/>', {
+          text: 'Run',
+          click: run
+      })
+	);
+	lesson.append(resultDom);
+  });
 </script>
 </body>
 </html>
