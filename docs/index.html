@@ -20,6 +20,12 @@
   .failed {
     background-color: #ffcccc;
   }
+  p {
+    font-family: sans-serif;
+  }
+  .code > * {
+    font-family: monospace;
+  }
   td, th {
     text-align: left;
     padding-left: 0.5em; 
@@ -40,7 +46,7 @@ This is an interactive tutorial for futures. The code samples are intended to lo
 <p>The <a href="https://docs.oracle.com/en/java/javase/12/docs/api/java.base/java/util/concurrent/CompletableFuture.html">CompletableFuture API</a> you can use here is a partial re-implementation in JavaScript. The functions you can use are listed below:
 <p></p>
 <p>Since Java 8:</p>
-<ul>
+<ul class="code">
 <li>var x = new CompletableFuture();
 <li>var x = CompletableFuture.completedFuture(value);
 <li> var newFuture = future.thenApply(value -> new_value);
@@ -49,11 +55,11 @@ This is an interactive tutorial for futures. The code samples are intended to lo
 <li> var newFuture = future.handle((value, exc) -> new_value);
 </ul>
 <p>Since Java 9:</p>
-<ul>
+<ul class="code">
 <li>var x = CompletableFuture.failedFuture(exception);
 </ul>
 <p>Since Java 12:</p>
-<ul>
+<ul class="code">
 <li> var newFuture = future.exceptionallyCompose(exc -> new_future);
 </ul>
 </p>
