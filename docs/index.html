@@ -82,7 +82,9 @@ This is an interactive tutorial for futures. The code samples are intended to lo
     }
     
     static wrap(exc) {
-      if (exc instanceof Exception) {
+      if (exc == null) {
+        return new Exception("Nullpointer");
+      } else if (exc instanceof Exception) {
         return exc;
       } else {
         return new Exception(exc);
@@ -106,6 +108,14 @@ This is an interactive tutorial for futures. The code samples are intended to lo
   
   function _assert_exc(exc) {
     _assert(exc instanceof Exception, "Expected an exception but found " + exc);
+  }
+  
+  function _assert_future(future) {
+    _assert(future instanceof CompletableFuture, "Expected an future but found " + future);
+  }
+  
+  function _assert_result(result) {
+    _assert(result instanceof Result, "Expected a result but found " + result);
   }
   
   class Result {
@@ -168,16 +178,48 @@ This is an interactive tutorial for futures. The code samples are intended to lo
       return f;
     }
     
-    thenApply(fun) {
-      return this._handle(result => {
-        if (result.isValue()) {
-          return Result.value(fun(result._value));
+    // fun: Exception => Future
+    exceptionallyCompose(fun) {
+      _assert(_globalLanguageLevel >= 12, "Requires Java 12+");
+      return this
+        .thenApply(x => CompletableFuture.completedFuture(x))
+        .exceptionally(fun)
+        .thenCompose(x => x);
+    }
+    
+    // fun: (Value, Value) => Value
+    thenCombine(other, fun) {
+      return this.thenCompose(x => other.thenApply(y => fun(x, y)));
+    }
+    
+    // fun: Exception => Value
+    exceptionally(fun) {
+      return this.handle((value, exc) => {
+        if (exc != null) {
+          return fun(exc);
         } else {
-          return result;
+          return value;
+        }
+      });
+    }
+
+    // fun: Value => Value
+    thenApply(fun) {
+      return this.handle((value, exc) => {
+        if (exc != null) {
+          throw exc;
+        } else {
+          return fun(value);
         }
       });
     }
     
+    // fun: Value => Future
+    thenCompose(fun) {
+      return this.thenApply(fun)._dereference();
+    }
+    
+    // fun: (Value, Exception) => Value
     handle(fun) {
       return this._handle(result => {
         if (result.isValue()) {
@@ -188,11 +230,14 @@ This is an interactive tutorial for futures. The code samples are intended to lo
       });
     }
     
+    // fun: Result => Result
     _handle(fun) {
       var newFuture = new CompletableFuture();
       this._addCallback(result => {
         try {
-          newFuture._internalComplete(fun(result));
+          var result2 = fun(result);
+          _assert_result(result2);
+          newFuture._internalComplete(result2);
         } catch (err) {
           newFuture._internalComplete(Result.exception(err));
         }
@@ -200,54 +245,26 @@ This is an interactive tutorial for futures. The code samples are intended to lo
       return newFuture;
     }
     
-    _handleCompose(fun) {
+    _dereference() {
       var newFuture = new CompletableFuture();
       this._addCallback(result => {
         try {
-          newFuture._internalComplete(fun(result));
+          if (result.isValue()) {
+            var future = result._value;
+            _assert_future(future);
+            future._addCallback(result2 => newFuture._internalComplete(result2))
+          } else {
+            newFuture._internalComplete(result);
+          }
         } catch (err) {
           newFuture._internalComplete(Result.exception(err));
         }
       });
       return newFuture;
     }
-    
-    exceptionally(fun) {
-      return this._handle(result => {
-        if (result.isException()) {
-          return Result.value(fun(result._exception));
-        } else {
-          return result;
-        }
-      });
-    }
-    
-    exceptionallyCompose(fun) {
-      _assert(_globalLanguageLevel >= 12, "Requires Java 12+");
-      return this
-        .thenApply(x => CompletableFuture.completedFuture(x))
-        .exceptionally(fun)
-        .thenCompose(x => x);
-    }
-    
-    thenCompose(fun) {
-      var newFuture = new CompletableFuture();
-      this.thenApply(value => {
-        try {
-          var innerFuture = fun(value);
-          _assert(innerFuture instanceof CompletableFuture, "Must return a CompletableFuture");
-          innerFuture._handle(result => newFuture._internalComplete(result));
-        } catch (err) {
-          newFuture._internalComplete(Result.exception(err));
-        }
-      });
-      return newFuture;
-    }
-    
-    thenCombine(other, fun) {
-      return this.thenCompose(x => other.thenApply(y => fun(x, y)));
-    }
-    
+
+    // fun: Result => Void
+    // fun may not throw errors
     _addCallback(fun) {
       if (this.isComplete()) {
         fun(this._result);
@@ -255,8 +272,7 @@ This is an interactive tutorial for futures. The code samples are intended to lo
         this._callbacks.push(fun);
       }
     }
-    
-    
+        
     isComplete() {
       return this._result != null;
     }
@@ -286,21 +302,25 @@ This is an interactive tutorial for futures. The code samples are intended to lo
     }
     
     _internalComplete(result) {
-      if (this.isComplete()) {
-        return;
+      if (this._result == null) {
+        this._result = result;
       }
-      this._result = result;
-      for (var callback of this._callbacks) {
-        callback(result);
+      var callbacks = this._callbacks;
+      this._callbacks = [];
+      for (var callback of callbacks) {
+        try {
+          callback(result);
+        } catch (err) {
+          console.log("Unexpected error from callback: " + err.toString());
+        }
       }
-      this._callbacks = null;
     }
     
     toString() {
-      if (this.isComplete()) {
-        return "IncompleteFuture";
+      if (this._result != null) {
+        return "CompleteFuture(" + this._result.toString() + ")";
       }
-       return "CompleteFuture(" + this._result.toString() + ")";
+      return "IncompleteFuture";
     }
     
   }
@@ -336,20 +356,21 @@ This is an interactive tutorial for futures. The code samples are intended to lo
   function compile(code, inputs) {
     var parameterList = inputs.join(', ');
     code = code.replaceAll("->", "=>");
+    code = code.replaceAll("::", ".");
     code = "(" + parameterList + ") => { " + code + "}";
     return eval(code);
   }
   
   function evaluateFunction(code, inputs) {
     var inputFutures = [];
-    for (input of inputs) {
+    for (var input of inputs) {
       inputFutures.push(new CompletableFuture());
     }
     var outputFuture = code(...inputFutures);
 
     // TODO: test various combinations of pre-completed inputs
     
-    for (inputFuture of inputFutures) {
+    for (var inputFuture of inputFutures) {
       if (inputFuture.isComplete()) {
         throw "Unexpected modification of the input future";
       }
@@ -363,16 +384,12 @@ This is an interactive tutorial for futures. The code samples are intended to lo
       throw "Return value has wrong type - expected CompletableFuture";
     }
     
-    if (outputFuture.isComplete()) {
-      throw "Future completed before the input";
-    }
-    
     for (var i = 0; i < inputs.length; i++) {
       inputFutures[i]._internalComplete(inputs[i]);
     }
     
     if (!outputFuture.isComplete()) {
-      throw "Future did not depend on the input";
+      throw "Output future did not complete";
     }
     
     return outputFuture.getResult();
@@ -396,18 +413,18 @@ This is an interactive tutorial for futures. The code samples are intended to lo
     var table = $('<table>');
     var tableheader = $('<tr>');
     tableheader.append($('<th>').text("Test"));
-    for (input of lesson.inputs) {
+    for (var input of lesson.inputs) {
       tableheader.append($('<th>').text("Parameter " + input));
     }
     tableheader.append($('<th>').text("Output:"));
 
     var tablerows = $('<tbody>');
     var num = 0;
-    for (test of lesson.tests) {
+    for (var test of lesson.tests) {
       var parameters = [];
       var tr = $('<tr>');
       tr.append($('<td>').text(++num));
-      for (input of test) {
+      for (var input of test) {
         var inputValue = input.createExample();
         parameters.push(CompletableFuture._completed(inputValue))
         tr.append($('<td>').text(inputValue.toString()));
@@ -455,7 +472,7 @@ This is an interactive tutorial for futures. The code samples are intended to lo
 
             var tableheader = $('<tr>');
             tableheader.append($('<th>').text("Test"));
-            for (input of lesson.inputs) {
+            for (var input of lesson.inputs) {
               tableheader.append($('<th>').text("Parameter " + input));
             }
             tableheader.append($('<th>').text("Actual:"));
@@ -465,11 +482,11 @@ This is an interactive tutorial for futures. The code samples are intended to lo
             var tablerows = $('<tbody>');
             var passed = true;
             var num = 0;
-            for (test of lesson.tests) {
+            for (var test of lesson.tests) {
               var tr = $('<tr>');
               tr.append($('<td>').text(++num));
               var inputValues = []
-              for (input of test) {
+              for (var input of test) {
                 var inputValue = input.createReal();
                 inputValues.push(inputValue);
                 tr.append($('<td>').text(inputValue.toString()));
@@ -503,7 +520,7 @@ This is an interactive tutorial for futures. The code samples are intended to lo
               .append($('<thead>').append(tableheader))
               .append(tablerows);
 
-			testcasesdiv.append(table);
+            testcasesdiv.append(table);
            }
           }));
     lessondiv.append(compilationdiv);
@@ -531,14 +548,14 @@ This is an interactive tutorial for futures. The code samples are intended to lo
       ],
       code: `return input.thenApply(v -> v);`,
       solution: `return input.thenApply(v -> v + "!");`,
-	  maxLanguageLevel: 12,
+      maxLanguageLevel: 12,
     },
     {
       title: "Lesson 2",
       text: `Now it's time to handle exceptions!
              Your code should do the same thing as before, but if the input future
              has an exception, your result future should convert the error string
-			 to "Error: " + exception`,
+             to "Error: " + exception`,
       inputs: [
         "input"
       ],
@@ -552,7 +569,7 @@ return input.thenApply(v -> v);`,
 return input
   .thenApply(v -> v + "!")
   .exceptionally(e -> "Error: " + e.getMessage());`,
-	  maxLanguageLevel: 12,
+      maxLanguageLevel: 12,
     },
     {
       title: "Lesson 3: Combining futures",
@@ -569,7 +586,7 @@ return input
 return null`,
       solution: `
 return first.thenCombine(second, (a,b)->a+b);`,
-	  maxLanguageLevel: 12,
+      maxLanguageLevel: 12,
     },
     {
       title: "Lesson 4: Combining many futures",
@@ -579,17 +596,17 @@ return first.thenCombine(second, (a,b)->a+b);`,
       ],
       tests: [
         [
-		  new ValueType("first"),
-		  new ValueType("second"),
-		  new ValueType("third"),
-		  new ValueType("fourth"),
+          new ValueType("first"),
+          new ValueType("second"),
+          new ValueType("third"),
+          new ValueType("fourth"),
         ],
       ],
       code: `// Hint: use thenCompose and thenApply
 return null`,
       solution: `
 return first.thenCompose(a -> second.thenCompose(b -> third.thenCompose(c -> fourth.thenApply(d -> a + b + c + d))));`,
-	  maxLanguageLevel: 12,
+      maxLanguageLevel: 12,
     },
     {
       title: "Lesson 5: Retry on exceptions",
@@ -607,7 +624,7 @@ return first.thenCompose(a -> second.thenCompose(b -> third.thenCompose(c -> fou
 return null`,
       solution: `
 return input.exceptionallyCompose(exc -> retry);`,
-	  maxLanguageLevel: 12,
+      maxLanguageLevel: 12,
     },
     {
       title: "Lesson 6: Retry on exceptions",
@@ -627,7 +644,7 @@ return null`,
 return input.thenApply(v -> CompletableFuture.completedFuture(v))
   .exceptionally(exc -> retry)
   .thenCompose(f -> f);`,
-	  maxLanguageLevel: 11,
+      maxLanguageLevel: 11,
     },
   ];
 
