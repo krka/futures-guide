@@ -118,6 +118,12 @@ This is an interactive tutorial for futures. The code samples are intended to lo
     _assert(result instanceof Result, "Expected a result but found " + result);
   }
   
+  function _assert_allowed(name) {
+    if (_globalAllowed) {
+      _assert(_globalAllowed.has(name), "Not allowed to call function: " + name);
+    }
+  }
+  
   class Result {
     constructor(value, exception) {
       this._value = value;
@@ -172,29 +178,36 @@ This is an interactive tutorial for futures. The code samples are intended to lo
       return newFuture;
     }
     
-    static _completed(result) {
+    static _completedResult(result) {
       var f = new CompletableFuture();
-      f._internalComplete(result);
+      f._completeResult(result);
       return f;
     }
     
     // fun: Exception => Future
     exceptionallyCompose(fun) {
       _assert(_globalLanguageLevel >= 12, "Requires Java 12+");
+      _assert_allowed("exceptionallyCompose");
       return this
-        .thenApply(x => CompletableFuture.completedFuture(x))
-        .exceptionally(fun)
-        .thenCompose(x => x);
+        ._thenApply(x => CompletableFuture.completedFuture(x))
+        ._exceptionally(fun)
+        ._thenCompose(x => x);
     }
     
     // fun: (Value, Value) => Value
     thenCombine(other, fun) {
-      return this.thenCompose(x => other.thenApply(y => fun(x, y)));
+      _assert_allowed("thenCombine");
+      return this._thenCompose(x => other._thenApply(y => fun(x, y)));
     }
     
     // fun: Exception => Value
     exceptionally(fun) {
-      return this.handle((value, exc) => {
+      _assert_allowed("exceptionally");
+      return this._exceptionally(fun);
+    }
+    
+    _exceptionally(fun) {
+      return this._handle((value, exc) => {
         if (exc != null) {
           return fun(exc);
         } else {
@@ -205,7 +218,12 @@ This is an interactive tutorial for futures. The code samples are intended to lo
 
     // fun: Value => Value
     thenApply(fun) {
-      return this.handle((value, exc) => {
+      _assert_allowed("thenApply");
+      return this._thenApply(fun);
+    }
+    
+    _thenApply(fun) {
+      return this._handle((value, exc) => {
         if (exc != null) {
           throw exc;
         } else {
@@ -216,12 +234,22 @@ This is an interactive tutorial for futures. The code samples are intended to lo
     
     // fun: Value => Future
     thenCompose(fun) {
-      return this.thenApply(fun)._dereference();
+      _assert_allowed("thenCompose");
+      return this._thenCompose(fun);
+    }
+    
+    _thenCompose(fun) {
+      return this._thenApply(fun)._dereference();
     }
     
     // fun: (Value, Exception) => Value
     handle(fun) {
-      return this._handle(result => {
+      _assert_allowed("handle");
+      return this._handle(fun);
+    }
+    
+    _handle(fun) {
+      return this._handleResult(result => {
         if (result.isValue()) {
           return Result.value(fun(result._value, null));
         } else {
@@ -231,15 +259,15 @@ This is an interactive tutorial for futures. The code samples are intended to lo
     }
     
     // fun: Result => Result
-    _handle(fun) {
+    _handleResult(fun) {
       var newFuture = new CompletableFuture();
       this._addCallback(result => {
         try {
           var result2 = fun(result);
           _assert_result(result2);
-          newFuture._internalComplete(result2);
+          newFuture._completeResult(result2);
         } catch (err) {
-          newFuture._internalComplete(Result.exception(err));
+          newFuture._completeResult(Result.exception(err));
         }
       });
       return newFuture;
@@ -252,12 +280,12 @@ This is an interactive tutorial for futures. The code samples are intended to lo
           if (result.isValue()) {
             var future = result._value;
             _assert_future(future);
-            future._addCallback(result2 => newFuture._internalComplete(result2))
+            future._addCallback(result2 => newFuture._completeResult(result2))
           } else {
-            newFuture._internalComplete(result);
+            newFuture._completeResult(result);
           }
         } catch (err) {
-          newFuture._internalComplete(Result.exception(err));
+          newFuture._completeResult(Result.exception(err));
         }
       });
       return newFuture;
@@ -293,15 +321,15 @@ This is an interactive tutorial for futures. The code samples are intended to lo
     }
     
     complete(value) {
-      this._internalComplete(Result.value(value));
+      this._completeResult(Result.value(value));
     }
     
     completeExceptionally(exc) {
       _assert_exc(exc);
-      this._internalComplete(Result.exception(exc));
+      this._completeResult(Result.exception(exc));
     }
     
-    _internalComplete(result) {
+    _completeResult(result) {
       if (this._result == null) {
         this._result = result;
       }
@@ -357,7 +385,7 @@ This is an interactive tutorial for futures. The code samples are intended to lo
     }
     
     for (var i = 0; i < inputs.length; i++) {
-      inputFutures[i]._internalComplete(inputs[i]);
+      inputFutures[i]._completeResult(inputs[i]);
     }
     
     if (!outputFuture.isComplete()) {
@@ -464,6 +492,7 @@ This is an interactive tutorial for futures. The code samples are intended to lo
     }
 
     _globalLanguageLevel = lesson.maxLanguageLevel;
+    _globalAllowed = lesson.allowedSet;
     
     var testResults = runTests(userFunction, lesson.compiledSolution, lesson.inputs);
 
@@ -509,6 +538,11 @@ This is an interactive tutorial for futures. The code samples are intended to lo
     lessondiv.append($('<h3>').text(lesson.title))
     lessondiv.append($('<p>').text(lesson.text))
     
+    if (lesson.allowed) {
+      lesson.allowedSet = new Set(lesson.allowed)
+      lessondiv.append($('<p>').text("Allowed methods: " + lesson.allowed.join(", ")));
+    }
+    
     try {
       lesson.compiledSolution = compile(lesson.solution, lesson.inputs);
     } catch (err) {
@@ -550,17 +584,18 @@ This is an interactive tutorial for futures. The code samples are intended to lo
 
   var lessons = [
     {
-      title: "Lesson 1",
-      text: `Let's start by transforming a future into a new future.`,
+      title: "Simple transform",
+      text: `Return a new future that adds a "!" to the input value`,
       inputs: [
         "input"
       ],
       code: `return input.thenApply(v -> v);`,
       solution: `return input.thenApply(v -> v + "!");`,
+      allowed: ["thenApply"],
       maxLanguageLevel: 12,
     },
     {
-      title: "Lesson 2",
+      title: "Exception handling",
       text: `Now it's time to handle exceptions!
              Your code should do the same thing as before, but if the input future
              has an exception, your result future should convert the error string
@@ -568,41 +603,63 @@ This is an interactive tutorial for futures. The code samples are intended to lo
       inputs: [
         "input"
       ],
-      code: `// Hint: use the exceptionally-method
-return input.thenApply(v -> v);`,
+      code: `return input.thenApply(v -> v);`,
       solution: `
 return input
   .thenApply(v -> v + "!")
   .exceptionally(e -> "Error: " + e.getMessage());`,
+      allowed: ["thenApply", "exceptionally"],
       maxLanguageLevel: 12,
     },
     {
-      title: "Lesson 3: Combining futures",
-      text: `Now we are going to get two futures as input. Your job is to return a future that is the concatenation of the values.`,
+      title: "Combining futures",
+      text: `Now we are going to get two futures as input. Your job is to return a future that is the concatenation of the values. You are only allowed to use thenCombine`,
       inputs: [
         "first", "second"
       ],
-      code: `// Hint: use thenCombine
-return null`,
+      code: `return null`,
       solution: `
 return first.thenCombine(second, (a,b)->a+b);`,
+      allowed: ["thenCombine"],
       maxLanguageLevel: 12,
     },
     {
-      title: "Lesson 4: Combining many futures",
+      title: "Combining futures: part 2",
+      text: `Same as previous, but now you have to solve it only using thenCompose and thenApply`,
+      inputs: [
+        "first", "second"
+      ],
+      code: `return null`,
+      solution: `
+return first.thenCompose(a -> second.thenApply(b -> a+b));`,
+      allowed: ["thenCompose", "thenApply"],
+      maxLanguageLevel: 12,
+    },
+    {
+      title: "Combining multiple futures",
       text: `Now we are going to get three futures as input. Your job is to return a future that is the concatenation of the values.`,
       inputs: [
         "first", "second", "third"
       ],
-      code: `// Hint: use thenCompose and thenApply
-return null`,
+      code: `return null`,
       solution: `
 return first.thenCompose(a -> second.thenCompose(b -> third.thenApply(c -> a + b + c)));`,
-// Alternative: first.thenCombine(second, (a,b)->a+b).thenCombine(third, (a,b)->a+b)
+      allowed: ["thenCompose", "thenApply"],
       maxLanguageLevel: 12,
     },
     {
-      title: "Lesson 5: Retry on exceptions",
+      title: "Combining multiple futures: part 2",
+      text: `Same as before, but now you have to use thenCombine and produce intermediate values`,
+      inputs: [
+        "first", "second", "third"
+      ],
+      code: `return null`,
+      solution: `return first.thenCombine(second, (a,b)->a+b).thenCombine(third, (a,b)->a+b)`,
+      allowed: ["thenCombine"],
+      maxLanguageLevel: 12,
+    },
+    {
+      title: "Retry on exceptions",
       text: `Now we are going to simulate a retry on exception. To simplify things, the retry logic is represented by the future called retry.`,
       inputs: [
         "input", "retry"
@@ -611,10 +668,11 @@ return first.thenCompose(a -> second.thenCompose(b -> third.thenApply(c -> a + b
 return null`,
       solution: `
 return input.exceptionallyCompose(exc -> retry);`,
+      allowed: ["exceptionallyCompose"],
       maxLanguageLevel: 12,
     },
     {
-      title: "Lesson 6: Retry on exceptions",
+      title: "Retry on exceptions: part 2",
       text: `Same as the previous lesson, but now you are not allowed to use methods defined in Java 12+.`,
       inputs: [
         "input", "retry"
@@ -625,6 +683,7 @@ return null`,
 return input.thenApply(v -> CompletableFuture.completedFuture(v))
   .exceptionally(exc -> retry)
   .thenCompose(f -> f);`,
+      allowed: ["thenApply", "exceptionally", "thenCompose"],
       maxLanguageLevel: 11,
     },
   ];
