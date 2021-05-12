@@ -597,8 +597,8 @@ return first.thenCombine(second, (a,b)->a+b);`,
       code: `// Hint: use thenCompose and thenApply
 return null`,
       solution: `
-return first.thenCompose(a -> second.thenCompose(b -> third.thenCompose(c -> fourth.thenApply(d -> a + b + c + d))));`,
-// Alternative: first.thenCombine(second, (a,b)->a+b).thenCombine(third, (a,b)->a+b).thenCombine(fourth, (a,b)->a+b)
+return first.thenCompose(a -> second.thenCompose(b -> third.thenApply(c -> a + b + c)));`,
+// Alternative: first.thenCombine(second, (a,b)->a+b).thenCombine(third, (a,b)->a+b)
       maxLanguageLevel: 12,
     },
     {
