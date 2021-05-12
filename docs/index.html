@@ -325,34 +325,6 @@ This is an interactive tutorial for futures. The code samples are intended to lo
     
   }
   
-  class ValueType {
-    constructor(name) {
-      this._name = name;
-    }
-    
-    createReal() {
-      return Result.value(this._name + ":" + Math.floor(Math.random() * 1000));
-    }
-
-    createExample() {
-      return Result.value(this._name);
-    }
-  }
-
-  class ExceptionType {
-    constructor(name) {
-      this._name = name;
-    }
-    
-    createReal() {
-      return Result.exception(this._name + ":" + Math.floor(Math.random() * 1000));
-    }
-
-    createExample() {
-      return Result.exception(this._name);
-    }
-  }
-  
   function compile(code, inputs) {
     var parameterList = inputs.join(', ');
     code = code.replaceAll("->", "=>");
@@ -395,6 +367,142 @@ This is an interactive tutorial for futures. The code samples are intended to lo
     return outputFuture.getResult();
   }
   
+  function generateTestCases(parameters, factories, random) {
+    var testCases = [];
+    generateTestCasesRec(testCases, parameters, factories, random, []);
+    return testCases;
+  }
+  
+  function generateTestCasesRec(testCases, parameters, factories, random, stack) {
+    if (stack.length == parameters.length) {
+      var inputs = [];
+      for (var i = 0; i < parameters.length; i++) {
+        var parameter = parameters[i];
+        var factory = stack[i];
+        inputs.push(factory(random, parameter));
+      }
+      testCases.push(inputs);
+      return;
+    }
+    for (var factory of factories) {
+      stack.push(factory);
+      generateTestCasesRec(testCases, parameters, factories, random, stack);
+      stack.pop();
+    }
+  }
+  
+  var randomNumbers = [];
+  for (var i = 0; i < 10000; i++) {
+    randomNumbers.push(Math.random());
+  }
+  
+  class Random {
+    constructor() {
+      this._index = 0;
+    }
+    
+    get() {
+      var index = this._index;
+      this._index++;
+      if (this._index >= randomNumbers.length) {
+        this._index = 0;
+      }
+      return randomNumbers[index];
+    }
+  }
+  
+  var inputFactories = [
+    (random, name) => Result.value(name + Math.floor(random.get() * 10)),
+    (random, name) => Result.exception(name + Math.floor(random.get() * 10)),
+  ];
+  
+  function runTests(code, solution, parameters) {
+    var random = new Random();
+    var result;
+    for (var i = 0; i < 10; i++) {
+      result = [];
+      var failed = false;
+      var testCases = generateTestCases(parameters, inputFactories, random);
+      for (var inputValues of testCases) {
+        var testCase = {
+          inputs: inputValues,
+          actual: "",
+          expected: "",
+          error: "",
+          failed: false
+        }
+        try {
+          var actual = evaluateFunction(code, inputValues);
+          var expected = evaluateFunction(solution, inputValues);
+          testCase.actual = actual.toString();
+          testCase.expected = expected.toString();
+          testCase.failed = !(actual.equals(expected));
+        } catch (err) {
+          testCase.error = err.toString();
+          testCase.failed = true;
+        }
+        result.push(testCase);
+        if (testCase.failed) {
+          failed = true;
+        }
+      }
+      if (failed) {
+        return result;
+      }
+    }
+    return result;
+  }
+  
+  function executeLesson(lesson) {
+    lesson.compilationdiv.empty();
+    lesson.testcasesdiv.empty();
+    try {
+      var userFunction = compile(lesson.editor.getValue(), lesson.inputs);
+    } catch (err) {
+      lesson.compilationdiv.append($('<pre>').text("Compilation failed: " + err));
+      return;
+    }
+
+    _globalLanguageLevel = lesson.maxLanguageLevel;
+    
+    var testResults = runTests(userFunction, lesson.compiledSolution, lesson.inputs);
+
+    var tableheader = $('<tr>');
+    tableheader.append($('<th>').text("Test"));
+    for (var input of lesson.inputs) {
+      tableheader.append($('<th>').text(input));
+    }
+    tableheader.append($('<th>').text("Return value"));
+    tableheader.append($('<th>').text("Expected"));
+    tableheader.append($('<th>').text("Error"));
+
+    var tablerows = $('<tbody>');
+    var passed = true;
+    var num = 0;
+    for (var testCase of testResults) {
+      var tr = $('<tr>');
+      tr.append($('<td>').text(++num));
+      for (var inputValue of testCase.inputs) {
+        tr.append($('<td>').text(inputValue.toString()));
+      }
+      tr.append($('<td>').text(testCase.actual));
+      tr.append($('<td>').text(testCase.expected));
+      tr.append($('<td>').text(testCase.error));
+      if (testCase.failed) {
+        tr.addClass("failed");
+      } else {
+        tr.addClass("passed");
+      }
+      tablerows.append(tr);
+    }
+
+    var table = $('<table>');
+    table
+      .append($('<thead>').append(tableheader))
+      .append(tablerows);
+    lesson.testcasesdiv.append(table);
+  }
+  
   function setupLesson(lesson) {
     var lessondiv = $('<div>', {class: 'lesson'});
 
@@ -402,131 +510,36 @@ This is an interactive tutorial for futures. The code samples are intended to lo
     lessondiv.append($('<p>').text(lesson.text))
     
     try {
-      var solution = compile(lesson.solution, lesson.inputs);
+      lesson.compiledSolution = compile(lesson.solution, lesson.inputs);
     } catch (err) {
       lessondiv.append($('<p>').text("Broken solution: " + solution + ", err: " + err));
     }
-    
-    var examples = $('<div>', {class: 'examples'});
-
-    var testcases = [];
-    var table = $('<table>');
-    var tableheader = $('<tr>');
-    tableheader.append($('<th>').text("Test"));
-    for (var input of lesson.inputs) {
-      tableheader.append($('<th>').text("Parameter " + input));
-    }
-    tableheader.append($('<th>').text("Output:"));
-
-    var tablerows = $('<tbody>');
-    var num = 0;
-    for (var test of lesson.tests) {
-      var parameters = [];
-      var tr = $('<tr>');
-      tr.append($('<td>').text(++num));
-      for (var input of test) {
-        var inputValue = input.createExample();
-        parameters.push(CompletableFuture._completed(inputValue))
-        tr.append($('<td>').text(inputValue.toString()));
-      }
-      try {
-        var expected = solution(...parameters);
-        tr.append($('<td>').text(expected.getResult().toString()));
-      } catch (err) {
-        tr.append($('<td>').text(err.toString()));
-      }      
-      tablerows.append(tr);
-    }
-
-    table
-      .append($('<thead>').append(tableheader))
-      .append(tablerows);
-    
-    examples.append(table);
-    lessondiv.append(examples);
     
     var editordiv = $('<div>', {class: 'editor'});
     var editor = ace.edit(editordiv.get(0));
     editor.setTheme('ace/theme/monokai');
     editor.session.setMode('ace/mode/java');
     editor.setValue(lesson.code);
+    lesson.editor = editor;
     
     var parameterList = lesson.inputs.join(', ');
     lessondiv.append(editordiv);
 
-    var compilationdiv = $('<div>', {class: 'compilation'});
-    var testcasesdiv = $('<div>', {class: 'testcases'});
+    lesson.compilationdiv = $('<div>', {class: 'compilation'});
+    lesson.testcasesdiv = $('<div>', {class: 'testcases'});
 
     lessondiv.append(
       $('<button/>', {
           text: 'Run',
-          click: () => {
-            compilationdiv.empty();
-            testcasesdiv.empty();
-            try {
-              var userFunction = compile(editor.getValue(), lesson.inputs);
-            } catch (err) {
-              compilationdiv.append($('<pre>').text("Compilation failed: " + err));
-              return;
-            }
-
-            var tableheader = $('<tr>');
-            tableheader.append($('<th>').text("Test"));
-            for (var input of lesson.inputs) {
-              tableheader.append($('<th>').text("Parameter " + input));
-            }
-            tableheader.append($('<th>').text("Actual:"));
-            tableheader.append($('<th>').text("Expected:"));
-            tableheader.append($('<th>').text("Error:"));
-
-            var tablerows = $('<tbody>');
-            var passed = true;
-            var num = 0;
-            for (var test of lesson.tests) {
-              var tr = $('<tr>');
-              tr.append($('<td>').text(++num));
-              var inputValues = []
-              for (var input of test) {
-                var inputValue = input.createReal();
-                inputValues.push(inputValue);
-                tr.append($('<td>').text(inputValue.toString()));
-              }
-              try {
-                _globalLanguageLevel = lesson.maxLanguageLevel;
-                var actual = evaluateFunction(userFunction, inputValues);
-                var expected = evaluateFunction(solution, inputValues);
-
-                tr.append($('<td>').text(actual.toString()));
-                tr.append($('<td>').text(expected.toString()));
-                tr.append($('<td>').text(""));                 
-                if (!actual.equals(expected)) {
-                  passed = false;
-                  tr.addClass("failed");
-                } else {
-                  tr.addClass("passed");
-                }
-              } catch (err) {
-                tr.append($('<td>').text(""));                 
-                tr.append($('<td>').text(""));                 
-                tr.append($('<td>').text(err.toString()));
-                passed = false;
-                tr.addClass("failed");
-              }
-              tablerows.append(tr);
-            }
-
-            var table = $('<table>');
-            table
-              .append($('<thead>').append(tableheader))
-              .append(tablerows);
-
-            testcasesdiv.append(table);
-           }
-          }));
-    lessondiv.append(compilationdiv);
-    lessondiv.append(testcasesdiv);
+          click: () => executeLesson(lesson)
+          }
+      )
+    );
+    lessondiv.append(lesson.compilationdiv);
+    lessondiv.append(lesson.testcasesdiv);
 
     $("#lessons").append(lessondiv);
+    executeLesson(lesson);
   }
 
   function setupLessons() {
@@ -542,10 +555,6 @@ This is an interactive tutorial for futures. The code samples are intended to lo
       inputs: [
         "input"
       ],
-      tests: [
-        [new ValueType("input")],
-        [new ExceptionType("input")],
-      ],
       code: `return input.thenApply(v -> v);`,
       solution: `return input.thenApply(v -> v + "!");`,
       maxLanguageLevel: 12,
@@ -558,10 +567,6 @@ This is an interactive tutorial for futures. The code samples are intended to lo
              to "Error: " + exception`,
       inputs: [
         "input"
-      ],
-      tests: [
-        [new ValueType("input")],
-        [new ExceptionType("input")],
       ],
       code: `// Hint: use the exceptionally-method
 return input.thenApply(v -> v);`,
@@ -577,11 +582,6 @@ return input
       inputs: [
         "first", "second"
       ],
-      tests: [
-        [new ValueType("first"), new ValueType("second")],
-        [new ValueType("first"), new ExceptionType("second")],
-        [new ExceptionType("first"), new ExceptionType("second")],
-      ],
       code: `// Hint: use thenCombine
 return null`,
       solution: `
@@ -590,22 +590,15 @@ return first.thenCombine(second, (a,b)->a+b);`,
     },
     {
       title: "Lesson 4: Combining many futures",
-      text: `Now we are going to get four futures as input. Your job is to return a future that is the concatenation of the values.`,
+      text: `Now we are going to get three futures as input. Your job is to return a future that is the concatenation of the values.`,
       inputs: [
-        "first", "second", "third", "fourth"
-      ],
-      tests: [
-        [
-          new ValueType("first"),
-          new ValueType("second"),
-          new ValueType("third"),
-          new ValueType("fourth"),
-        ],
+        "first", "second", "third"
       ],
       code: `// Hint: use thenCompose and thenApply
 return null`,
       solution: `
 return first.thenCompose(a -> second.thenCompose(b -> third.thenCompose(c -> fourth.thenApply(d -> a + b + c + d))));`,
+// Alternative: first.thenCombine(second, (a,b)->a+b).thenCombine(third, (a,b)->a+b).thenCombine(fourth, (a,b)->a+b)
       maxLanguageLevel: 12,
     },
     {
@@ -613,12 +606,6 @@ return first.thenCompose(a -> second.thenCompose(b -> third.thenCompose(c -> fou
       text: `Now we are going to simulate a retry on exception. To simplify things, the retry logic is represented by the future called retry.`,
       inputs: [
         "input", "retry"
-      ],
-      tests: [
-        [new ValueType("input"), new ValueType("retry")],
-        [new ValueType("input"), new ExceptionType("retry")],
-        [new ExceptionType("input"), new ExceptionType("retry")],
-        [new ExceptionType("input"), new ValueType("retry")],
       ],
       code: `// Hint: look in the Java 12 futures API
 return null`,
@@ -631,12 +618,6 @@ return input.exceptionallyCompose(exc -> retry);`,
       text: `Same as the previous lesson, but now you are not allowed to use methods defined in Java 12+.`,
       inputs: [
         "input", "retry"
-      ],
-      tests: [
-        [new ValueType("input"), new ValueType("retry")],
-        [new ValueType("input"), new ExceptionType("retry")],
-        [new ExceptionType("input"), new ExceptionType("retry")],
-        [new ExceptionType("input"), new ValueType("retry")],
       ],
       code: `// Hint: Can you first transform value into a nested future and unwrap it in the end?
 return null`,
