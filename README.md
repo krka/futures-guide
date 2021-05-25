@@ -86,7 +86,7 @@ The implementation is then (massively simplified):
     return result;
   }
 
-  private void completeWith(CompletableFuture<B> other, Function<A, B> function) {
+  private void completeWith(CompletableFuture<B> result, Function<A, B> function) {
     assert this.isDone();
     try {
       A inputValue = this.get();
