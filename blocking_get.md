@@ -40,7 +40,7 @@ Exactly how to do this varies by case but it usually involves the following:
 
 Sometimes the work needed to transform the code can be complicated, but it should always be possible.
 
-### Assert that the future is completed.
+### Assert that the future is completed
 
 If you really don't want to go the avoidance path, you can make other improvements that require a smaller investment in refactoring.
 
