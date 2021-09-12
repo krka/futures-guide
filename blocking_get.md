@@ -68,7 +68,7 @@ you will see exceptions that directly correspond to a violation of this invarian
 Note that this will still not catch the problem until it occurs. It may very well be the that this never triggers during normal operations, but suddenly it starts
 breaking when something rare triggers it.
 
-### Transformating and combining
+### Transforming and combining
 
 If you depend on a single future, refactoring to use `.thenApply` or `.thenCompose` instead of `get` or `join` may be straightforward.
 
