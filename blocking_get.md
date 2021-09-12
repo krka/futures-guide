@@ -5,7 +5,7 @@ If the future is completed, either normally or exceptionally, this is a non-bloc
 However, if the future is not completed, this will block the current thread until the the future has completed.
 
 ## The problem
-Calling `get` or `join` in this way is not always problem. There are several patterns where this makes sense to do:
+Calling `get` or `join` in this way is not always a problem. There are several types of code where this makes sense to do:
 
 * You have a background thread or scheduled executor that performs some update periodically.
   The only thread you block is that specific background thread, and it's only used for that purpose anyway.
