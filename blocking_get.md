@@ -56,7 +56,7 @@ instead of `get` or `join`.
 The implementation is simple:
 
 ```java
-    if (!stage.toCompletableFuture().isDone()) {
+    if (!future.isDone()) {
       throw new IllegalStateException("future was not completed");
     }
     return future.join();
