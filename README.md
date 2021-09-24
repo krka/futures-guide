@@ -373,6 +373,24 @@ writing code in that way.
 `orTimeout` and `completeOnTimeout` does not let you configure an executor, so you should manually move the work
 to a different executor. Otherwise you may be bottlenecking on a static single-threaded `ScheduledExecutorService`.
 
+### Problematic example
+
+```java
+return future.orTimeout(...);
+```
+if the future times out, all other futures that apply computations based on the result of that future will run on that
+static single-thread executor.
+
+### Workaround
+
+Instead, use this pattern:
+```java
+return future.orTimeout(...).whenCompleteAsync((value, throwable) -> {}, executor);
+```
+
+to ensure that regardless of whether the future completes before the timeout or after the timeout, the remaining work will
+be done on your specified executor.
+
 > **_Experiment:_** [OnTimeoutTest](src/test/java/se/krka/futures/OnTimeoutTest.java)
 
 ## Problems with using allOf
