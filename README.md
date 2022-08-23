@@ -166,7 +166,7 @@ Threads are (currently at least) a fairly expensive primitive, both in terms of 
 overhead.
 If we can change the code from using a large number of threads that each blocks to wait on results,
 to a large number of futures that never block, but instead run on a shared set of thread pools and voluntarily hand off
-work, we can improve the hardware utilization.
+work, we can improve the hardware utilization (and typically handle more work with the same amount of hardware resources).
 
 # Part 3 - Important details about Java futures
 
