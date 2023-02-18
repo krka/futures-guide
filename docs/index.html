@@ -79,6 +79,10 @@ effectively be <code>CompletableFuture&lt;String&gt;</code>.</p>
 </ul>
 </p>
 
+Keyboard shortcuts:
+<ul>
+    <li>Ctrl-Enter / Cmd-Enter: Execute code</li>
+</ul>
 <div id="lessons">
 </div>
     
@@ -336,6 +340,12 @@ effectively be <code>CompletableFuture&lt;String&gt;</code>.</p>
 
     lesson.compilationdiv = $('<div>', {class: 'compilation'});
     lesson.testcasesdiv = $('<div>', {class: 'testcases'});
+
+    editor.commands.addCommand({
+      name: 'run',
+      bindKey: {win: 'Ctrl-Enter',  mac: 'Command-Enter'},
+      exec: () => executeLesson(lesson)
+    });
 
     lessondiv.append(
       $('<button/>', {
