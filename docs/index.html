@@ -204,11 +204,14 @@ effectively be <code>CompletableFuture&lt;String&gt;</code>.</p>
         try {
           var actual = evaluateFunction(code, inputValues);
           var expected = evaluateFunction(solution, inputValues);
-          testCase.actual = actual.toString();
-          testCase.expected = expected.toString();
           testCase.failed = !(actual.equals(expected));
+          if (testCase.failed) {
+            testCase.resultText = "Expected " + expected + " but was " + actual;
+          } else {
+            testCase.resultText = "" + actual;
+          }
         } catch (err) {
-          testCase.error = err.toString();
+          testCase.resultText = err.toString();
           testCase.failed = true;
         }
         result.push(testCase);
@@ -243,9 +246,7 @@ effectively be <code>CompletableFuture&lt;String&gt;</code>.</p>
     for (var input of lesson.inputs) {
       tableheader.append($('<th>').text(input));
     }
-    tableheader.append($('<th>').text("Return value"));
-    tableheader.append($('<th>').text("Expected"));
-    tableheader.append($('<th>').text("Error"));
+    tableheader.append($('<th>').text("Result"));
 
     var tablerows = $('<tbody>');
     var passed = true;
@@ -256,9 +257,7 @@ effectively be <code>CompletableFuture&lt;String&gt;</code>.</p>
       for (var inputValue of testCase.inputs) {
         tr.append($('<td>').text(inputValue.toString()));
       }
-      tr.append($('<td>').text(testCase.actual));
-      tr.append($('<td>').text(testCase.expected));
-      tr.append($('<td>').text(testCase.error));
+      tr.append($('<td>').text(testCase.resultText));
       if (testCase.failed) {
         tr.addClass("failed");
       } else {
