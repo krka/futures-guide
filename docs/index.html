@@ -3,13 +3,20 @@
 <head>
 <title>Interactive futures tutorial</title>
 <style type="text/css" media="screen">
+  body {
+    width: 50em;
+    margin-left: 10em;
+  }
   div.editor { 
-    width: 80em;
+    width: 60em;
     height: 10em;
   }
   div.lesson {
-    width: 82em;
+    width: 48em;
     padding: 1em;
+    border: 0.1em solid #aaa;
+    border-radius: 1em;
+    margin: 1em;
   }
   div.verify {
     display: none;
@@ -22,15 +29,21 @@
   }
   p {
     font-family: sans-serif;
+    margin-bottom: 0.5em;
   }
-  .code > * {
+  .code > *, code {
     font-family: monospace;
+    background-color: #eee;
   }
   td, th {
     text-align: left;
     padding-left: 0.5em; 
     padding-right: 0.5em;
     font-family: monospace;
+  }
+  button {
+    margin-left: 49em;
+    width: 5em;
   }
 </style>
 </head>
@@ -39,9 +52,11 @@
 <h2>Intro</h2>
 <p>
 This is an interactive tutorial for futures. The code samples are intended to look and behave like Java but it's actually JavaScript.
-"->" is automatically converted to "=>" so you can write lambdas like in Java.</p>
+<code>-></code> is automatically converted to <code>=></code> so you can write lambdas like in Java.</p>
 
-<p>Exceptions are similar to Java, but without anything fancy.</p>
+<p>Unlike in Java, the exceptions here are simply strings instead of being full Exception objects with stack traces.</p>
+<p>Additionally, there are no generics here, so just ignore that aspect for now. For these exercises, all the futures will
+effectively be <code>CompletableFuture&lt;String&gt;</code>.</p>
 
 <p>The <a href="https://docs.oracle.com/en/java/javase/12/docs/api/java.base/java/util/concurrent/CompletableFuture.html">CompletableFuture API</a> you can use here is a partial re-implementation in JavaScript. The functions you can use are listed below:
 <p></p>
@@ -70,289 +85,16 @@ This is an interactive tutorial for futures. The code samples are intended to lo
 <script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.4.0/jquery.min.js"></script>
 
 <!-- https://cdnjs.com/libraries/ace -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.12/ace.min.js" type="text/javascript" charset="utf-8"></script>
+<script type="text/javascript" charset="utf-8" src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.12/ace.min.js"></script>
+<script type="text/javascript" src="futures.js"></script>
 <script>
   var basePath = "https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.12/";
   ace.config.set("basePath", basePath);
   ace.config.set("themePath", basePath);
 
-  class Exception {
-    constructor(message) {
-      this._message = message;
-    }
-    
-    static wrap(exc) {
-      if (exc == null) {
-        return new Exception("Nullpointer");
-      } else if (exc instanceof Exception) {
-        return exc;
-      } else {
-        return new Exception(exc);
-      }
-    }
-    
-    getMessage() {
-      return this.toString();
-    }
-    
-    toString() {
-      return this._message;
-    }
-  }
-  
-  function _assert(expr, msg) {
-    if (!expr) {
-      throw new Exception("Assertion failed: " + msg);
-    }
-  }
-  
-  function _assert_exc(exc) {
-    _assert(exc instanceof Exception, "Expected an exception but found " + exc);
-  }
-  
-  function _assert_future(future) {
-    _assert(future instanceof CompletableFuture, "Expected an future but found " + future);
-  }
-  
-  function _assert_result(result) {
-    _assert(result instanceof Result, "Expected a result but found " + result);
-  }
-  
-  function _assert_allowed(name) {
-    if (_globalAllowed) {
-      _assert(_globalAllowed.has(name), "Not allowed to call function: " + name);
-    }
-  }
-  
-  class Result {
-    constructor(value, exception) {
-      this._value = value;
-      this._exception = exception;
-    }
-    
-    static exception(exc) {
-      return new Result(null, Exception.wrap(exc));
-    }
-    
-    static value(value) {
-      return new Result(value, null);
-    }
-    
-    isException() {
-      return this._exception != null;
-    }
+  var CompletableFuture = futures.CompletableFuture
+  var Result = futures.Result
 
-    isValue() {
-      return this._exception == null;
-    }
-    
-    equals(other) {
-      return this._exception == other._exception && this._value == other._value;
-    }
-    
-    toString() {
-      if (this._exception != null) {
-        return "Exception('" + this._exception.getMessage() + "')";
-      }
-      return "Value('" + this._value + "')";
-    }
-  }
-  
-  class CompletableFuture {
-    constructor() {
-      this._result = null;
-      this._callbacks = [];
-    }
-    
-    static completedFuture(value) {
-      var newFuture = new CompletableFuture();
-      newFuture.complete(value);
-      return newFuture;
-    }
-    
-    static failedFuture(exc) {
-      _assert(_globalLanguageLevel >= 9, "Requires Java 9+");
-      _assert_exc(exc);
-      var newFuture = new CompletableFuture();
-      newFuture.completeExceptionally(exc);
-      return newFuture;
-    }
-    
-    static _completedResult(result) {
-      var f = new CompletableFuture();
-      f._completeResult(result);
-      return f;
-    }
-    
-    // fun: Exception => Future
-    exceptionallyCompose(fun) {
-      _assert(_globalLanguageLevel >= 12, "Requires Java 12+");
-      _assert_allowed("exceptionallyCompose");
-      return this
-        ._thenApply(x => CompletableFuture.completedFuture(x))
-        ._exceptionally(fun)
-        ._thenCompose(x => x);
-    }
-    
-    // fun: (Value, Value) => Value
-    thenCombine(other, fun) {
-      _assert_allowed("thenCombine");
-      return this._thenCompose(x => other._thenApply(y => fun(x, y)));
-    }
-    
-    // fun: Exception => Value
-    exceptionally(fun) {
-      _assert_allowed("exceptionally");
-      return this._exceptionally(fun);
-    }
-    
-    _exceptionally(fun) {
-      return this._handle((value, exc) => {
-        if (exc != null) {
-          return fun(exc);
-        } else {
-          return value;
-        }
-      });
-    }
-
-    // fun: Value => Value
-    thenApply(fun) {
-      _assert_allowed("thenApply");
-      return this._thenApply(fun);
-    }
-    
-    _thenApply(fun) {
-      return this._handle((value, exc) => {
-        if (exc != null) {
-          throw exc;
-        } else {
-          return fun(value);
-        }
-      });
-    }
-    
-    // fun: Value => Future
-    thenCompose(fun) {
-      _assert_allowed("thenCompose");
-      return this._thenCompose(fun);
-    }
-    
-    _thenCompose(fun) {
-      return this._thenApply(fun)._dereference();
-    }
-    
-    // fun: (Value, Exception) => Value
-    handle(fun) {
-      _assert_allowed("handle");
-      return this._handle(fun);
-    }
-    
-    _handle(fun) {
-      return this._handleResult(result => {
-        if (result.isValue()) {
-          return Result.value(fun(result._value, null));
-        } else {
-          return Result.value(fun(null, result._exception));
-        }
-      });
-    }
-    
-    // fun: Result => Result
-    _handleResult(fun) {
-      var newFuture = new CompletableFuture();
-      this._addCallback(result => {
-        try {
-          var result2 = fun(result);
-          _assert_result(result2);
-          newFuture._completeResult(result2);
-        } catch (err) {
-          newFuture._completeResult(Result.exception(err));
-        }
-      });
-      return newFuture;
-    }
-    
-    _dereference() {
-      var newFuture = new CompletableFuture();
-      this._addCallback(result => {
-        try {
-          if (result.isValue()) {
-            var future = result._value;
-            _assert_future(future);
-            future._addCallback(result2 => newFuture._completeResult(result2))
-          } else {
-            newFuture._completeResult(result);
-          }
-        } catch (err) {
-          newFuture._completeResult(Result.exception(err));
-        }
-      });
-      return newFuture;
-    }
-
-    // fun: Result => Void
-    // fun may not throw errors
-    _addCallback(fun) {
-      if (this.isComplete()) {
-        fun(this._result);
-      } else {
-        this._callbacks.push(fun);
-      }
-    }
-        
-    isComplete() {
-      return this._result != null;
-    }
-    
-    getResult() {
-      if (!this.isComplete()) {
-        throw "Future is not completed";
-      }
-      return this._result;
-    }
-    
-    getValue() {
-      var res = getResult();
-      if (res.isException()) {
-        throw "Future completed exceptionally";
-      }
-      return res._value;
-    }
-    
-    complete(value) {
-      this._completeResult(Result.value(value));
-    }
-    
-    completeExceptionally(exc) {
-      _assert_exc(exc);
-      this._completeResult(Result.exception(exc));
-    }
-    
-    _completeResult(result) {
-      if (this._result == null) {
-        this._result = result;
-      }
-      var callbacks = this._callbacks;
-      this._callbacks = [];
-      for (var callback of callbacks) {
-        try {
-          callback(result);
-        } catch (err) {
-          console.log("Unexpected error from callback: " + err.toString());
-        }
-      }
-    }
-    
-    toString() {
-      if (this._result != null) {
-        return "CompleteFuture(" + this._result.toString() + ")";
-      }
-      return "IncompleteFuture";
-    }
-    
-  }
-  
   function compile(code, inputs) {
     var parameterList = inputs.join(', ');
     code = code.replaceAll("->", "=>");
@@ -440,8 +182,8 @@ This is an interactive tutorial for futures. The code samples are intended to lo
   }
   
   var inputFactories = [
-    (random, name) => Result.value(name + Math.floor(random.get() * 10)),
-    (random, name) => Result.exception(name + Math.floor(random.get() * 10)),
+    (random, name) => futures.Result.value(name + Math.floor(random.get() * 10)),
+    (random, name) => futures.Result.exception(name + Math.floor(random.get() * 10)),
   ];
   
   function runTests(code, solution, parameters) {
@@ -531,18 +273,25 @@ This is an interactive tutorial for futures. The code samples are intended to lo
       .append(tablerows);
     lesson.testcasesdiv.append(table);
   }
-  
+
+  function code(x) {
+    return "<code>" + x + "</code>";
+  }
+
   function setupLesson(lesson) {
     var lessondiv = $('<div>', {class: 'lesson'});
 
     lessondiv.append($('<h3>').text(lesson.title))
-    lessondiv.append($('<p>').text(lesson.text))
-    
+    lessondiv.append($('<p>').html(lesson.text))
+
+    var text = "Java version: " + lesson.maxLanguageLevel
     if (lesson.allowed) {
       lesson.allowedSet = new Set(lesson.allowed)
-      lessondiv.append($('<p>').text("Allowed methods: " + lesson.allowed.join(", ")));
+      text = text + ", allowed methods: " + lesson.allowed.map(code).join(", ")
     }
-    
+    text = text + ", inputs: " + lesson.inputs.map(code).join(", ")
+    lessondiv.append($('<p>').html(text));
+
     try {
       lesson.compiledSolution = compile(lesson.solution, lesson.inputs);
     } catch (err) {
@@ -599,7 +348,7 @@ This is an interactive tutorial for futures. The code samples are intended to lo
       text: `Now it's time to handle exceptions!
              Your code should do the same thing as before, but if the input future
              has an exception, your result future should convert the error string
-             to "Error: " + exception`,
+             to <code>"Error: " + exception</code>`,
       inputs: [
         "input"
       ],
@@ -613,7 +362,7 @@ return input
     },
     {
       title: "Combining futures",
-      text: `Now we are going to get two futures as input. Your job is to return a future that is the concatenation of the values. You are only allowed to use thenCombine`,
+      text: `Now we are going to get two futures as input. Your job is to return a future that is the concatenation of the values. You are only allowed to use <code>thenCombine</code>`,
       inputs: [
         "first", "second"
       ],
@@ -625,7 +374,7 @@ return first.thenCombine(second, (a,b)->a+b);`,
     },
     {
       title: "Combining futures: part 2",
-      text: `Same as previous, but now you have to solve it only using thenCompose and thenApply`,
+      text: `Same as previous, but now you have to solve it only using <code>thenCompose</code> and <code>thenApply</code>`,
       inputs: [
         "first", "second"
       ],
@@ -649,7 +398,7 @@ return first.thenCompose(a -> second.thenCompose(b -> third.thenApply(c -> a + b
     },
     {
       title: "Combining multiple futures: part 2",
-      text: `Same as before, but now you have to use thenCombine and produce intermediate values`,
+      text: `Same as before, but now you have to use <code>thenCombine</code> and produce intermediate values`,
       inputs: [
         "first", "second", "third"
       ],
@@ -660,7 +409,7 @@ return first.thenCompose(a -> second.thenCompose(b -> third.thenApply(c -> a + b
     },
     {
       title: "Retry on exceptions",
-      text: `Now we are going to simulate a retry on exception. To simplify things, the retry logic is represented by the future called retry.`,
+      text: `Now we are going to simulate a retry on exception. To simplify things, the retry logic is represented by the future called <code>retry</code>.`,
       inputs: [
         "input", "retry"
       ],

@@ -168,6 +168,11 @@ If we can change the code from using a large number of threads that each blocks 
 to a large number of futures that never block, but instead run on a shared set of thread pools and voluntarily hand off
 work, we can improve the hardware utilization (and typically handle more work with the same amount of hardware resources).
 
+# Interlude
+
+Sorry to interrupt! Before we dig deeper into the details, perhaps it would be useful to first
+try out the interactive lessons [here](https://krka.github.io/futures-guide/).
+
 # Part 3 - Important details about Java futures
 
 Unfortunately, some things are not very intuitive, so in addition to understanding the basic concepts it is
