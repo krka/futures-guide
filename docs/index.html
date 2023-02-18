@@ -42,7 +42,7 @@
     font-family: monospace;
   }
   button {
-    margin-left: 49em;
+    float: right;
     width: 5em;
   }
 </style>
@@ -225,7 +225,12 @@ effectively be <code>CompletableFuture&lt;String&gt;</code>.</p>
     }
     return result;
   }
-  
+
+  function resetLesson(lesson) {
+    lesson.editor.setValue(lesson.code)
+    executeLesson(lesson)
+  }
+
   function executeLesson(lesson) {
     lesson.compilationdiv.empty();
     lesson.testcasesdiv.empty();
@@ -312,11 +317,19 @@ effectively be <code>CompletableFuture&lt;String&gt;</code>.</p>
 
     lessondiv.append(
       $('<button/>', {
+          text: 'Reset',
+          click: () => resetLesson(lesson)
+          }
+      )
+    );
+    lessondiv.append(
+      $('<button/>', {
           text: 'Run',
           click: () => executeLesson(lesson)
           }
       )
     );
+    lessondiv.append($('<p/>'));
     lessondiv.append(lesson.compilationdiv);
     lessondiv.append(lesson.testcasesdiv);
 
