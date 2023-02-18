@@ -231,7 +231,27 @@ effectively be <code>CompletableFuture&lt;String&gt;</code>.</p>
     executeLesson(lesson)
   }
 
+  function save(lesson) {
+    var key = "interactive-lesson-" + lesson.numeral
+    var cur = lesson.editor.getValue()
+    if (cur == lesson.code) {
+      localStorage.removeItem(key)
+    } else {
+      localStorage.setItem(key, cur)
+    }
+  }
+
+  function load(lesson) {
+    var key = "interactive-lesson-" + lesson.numeral
+    var code = localStorage.getItem(key)
+    if (code) {
+      lesson.editor.setValue(code)
+    }
+  }
+
+
   function executeLesson(lesson) {
+    save(lesson);
     lesson.compilationdiv.empty();
     lesson.testcasesdiv.empty();
     try {
@@ -282,7 +302,8 @@ effectively be <code>CompletableFuture&lt;String&gt;</code>.</p>
     return "<code>" + x + "</code>";
   }
 
-  function setupLesson(lesson) {
+  function setupLesson(lesson, numeral) {
+    lesson.numeral = numeral
     var lessondiv = $('<div>', {class: 'lesson'});
 
     lessondiv.append($('<h3>').text(lesson.title))
@@ -308,7 +329,8 @@ effectively be <code>CompletableFuture&lt;String&gt;</code>.</p>
     editor.session.setMode('ace/mode/java');
     editor.setValue(lesson.code);
     lesson.editor = editor;
-    
+    load(lesson)
+
     var parameterList = lesson.inputs.join(', ');
     lessondiv.append(editordiv);
 
@@ -338,15 +360,16 @@ effectively be <code>CompletableFuture&lt;String&gt;</code>.</p>
   }
 
   function setupLessons() {
+    var i = 0;
     for (lesson of lessons) {
-      setupLesson(lesson);
+      setupLesson(lesson, ++i);
     }
   }
 
   var lessons = [
     {
       title: "Simple transform",
-      text: `Return a new future that adds a "!" to the input value`,
+      text: `Return a new future that adds a <code>!</code> to the input value`,
       inputs: [
         "input"
       ],
