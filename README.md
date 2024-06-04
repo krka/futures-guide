@@ -65,7 +65,7 @@ applied as soon as the future completes (or immediately if the future is already
 
 These transformations are of course implemented by using the internal listeners in the future object.
 Applying a transformation is functionally the same thing as creating an incomplete future and then
-attaching a listener to the original future that will complete the new feature.
+attaching a listener to the original future that will complete the new future.
 
 You can imagine it being implemented something similar to this:
 
