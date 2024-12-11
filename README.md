@@ -255,7 +255,7 @@ call.
 Expressed as a future, you could implement this as:
 
 ```java
-  remoteCall1().thenCompose(result -> remoteCall2(result)
+  remoteCall1().thenCompose(result -> remoteCall2(result))
 ``` 
 
 This is similar to `thenApply` except that the function is expected to return a future instead of a value.
